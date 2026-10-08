@@ -1719,28 +1719,44 @@
     pushBusy = false;
     await renderPushCard();
   }
+  // Turn a failure into plain words, plus a short technical note (so if it
+  // happens again, a screenshot tells us exactly which step failed).
   function pushError(e) {
     const msg = String((e && e.message) || "");
     if (/push_subscriptions|schema cache|relation/i.test(msg)) return "The database isn't ready for reminders yet. Run the step 5 database update first.";
     if (e && e.name === "NotAllowedError") return "Notifications were not allowed. You can change that in your phone's Settings.";
-    return "Couldn't turn that on. Check your connection and try again.";
+    const detail = [e && e.stage, e && e.name, msg].filter(Boolean).join(": ").slice(0, 140);
+    return "Couldn't turn that on. (" + detail + ")";
+  }
+  // Run one step and label any failure with the step's name.
+  async function step(stage, fn) {
+    try { return await fn(); } catch (e) { const err = e instanceof Error ? e : new Error(String((e && e.message) || e)); if (e && e.name) err.name = e.name; if (e && e.message) err.message = e.message; err.stage = stage; throw err; }
+  }
+  // The app's background helper (service worker), once it is ready to use.
+  function readyRegistration() {
+    return Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("The app's helper isn't ready. Close the app fully, reopen it, and try again.")), 8000))
+    ]);
   }
 
   function enablePush() {
+    // Ask for permission FIRST, right inside the tap. iPhone only shows the
+    // permission pop-up if it is requested immediately when you tap.
+    const asking = Notification.permission === "granted" ? Promise.resolve("granted") : Notification.requestPermission();
     return runPush(async () => {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) throw new Error("The app isn't ready yet. Refresh the page and try again.");
-      const permission = await Notification.requestPermission();
+      const permission = await step("permission", () => asking);
       if (permission !== "granted") return;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
+      const reg = await step("helper", readyRegistration);
+      const subscribe = () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
+      let sub = await step("subscribe", async () => (await reg.pushManager.getSubscription()) || subscribe());
       try {
-        await saveSub(sub);
+        await step("save", () => saveSub(sub));
       } catch (e) {
         // This phone may still be registered under someone else's account. Start fresh once.
         await sub.unsubscribe();
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
-        await saveSub(sub);
+        sub = await step("subscribe", subscribe);
+        await step("save", () => saveSub(sub));
       }
       showToast("Notifications are on. Tap \u201CSend a test\u201D to check.");
     });
