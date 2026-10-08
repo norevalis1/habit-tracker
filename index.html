@@ -1784,13 +1784,19 @@
     return runPush(async () => {
       const { data, error } = await db.functions.invoke("send-reminders", { body: { test: true } });
       if (error) {
-        const status = error.context && error.context.status;
-        $("pushError").textContent = status === 404 || /not found|failed to send/i.test(error.message || "")
-          ? "The reminder service isn't set up yet. Follow the setup steps for the \u201Csend-reminders\u201D function."
-          : "The test didn't go through. Try again in a moment.";
+        // Read what the server actually said, so we can tell what went wrong.
+        const res = error.context;
+        const status = res && res.status;
+        let said = "";
+        try { const j = await res.clone().json(); said = j.error || j.message || j.msg || ""; } catch (e) { try { said = (await res.text()).slice(0, 80); } catch (e2) { /* nothing */ } }
+        const hint = status === 404 ? "The reminder service isn't set up yet. Deploy the \u201Csend-reminders\u201D function."
+          : status === 401 ? "The server rejected the login check. Turn OFF \u201CVerify JWT\u201D on the send-reminders function."
+          : status === 500 ? "The function ran but hit a problem. Check its secrets and logs."
+          : "The test didn't go through.";
+        $("pushError").textContent = hint + " (" + [status, said || error.message].filter(Boolean).join(": ").slice(0, 120) + ")";
         return;
       }
-      if (!data || !data.sent) { $("pushError").textContent = "No device received it. Try turning notifications off and on again."; return; }
+      if (!data || !data.sent) { $("pushError").textContent = "The server ran, but no device received it. Try turning notifications off and on again."; return; }
       showToast("Test sent. It should arrive in a few seconds.");
     });
   }
@@ -1848,7 +1854,20 @@
   renderPushCard();
 
   // Register the service worker (only works on the real https site, not on a local file).
+  // UPDATES: each time you open or return to the app we check for a newer version,
+  // and when one is ready we offer a "Reload" button. (No more deleting the icon.)
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloaded) return;   // first-ever install: nothing to refresh
+      reloaded = true;
+      showToast("A new version is ready.", { label: "Reload", onClick: () => location.reload() });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+    });
     window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(e => { window.__swError = String((e && e.message) || e).slice(0, 80); /* the app still works without it */ }); });
   }
 </script>

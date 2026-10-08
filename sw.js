@@ -8,7 +8,7 @@
 // When you change index.html in the future, bump the number in CACHE below.
 // That tells phones to throw away the old copy.
 
-const CACHE = "habits-v3";
+const CACHE = "habits-v4";
 const CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 const APP_FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
@@ -46,7 +46,9 @@ self.addEventListener("fetch", event => {
   if (req.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        const fresh = await fetch(req);
+        // "no-cache" = always ask GitHub whether there is a newer copy, instead of
+        // trusting the phone's own saved copy (which can be up to 10 minutes old).
+        const fresh = await fetch(req.url, { cache: "no-cache" });
         if (fresh.ok) { const c = await caches.open(CACHE); c.put("./index.html", fresh.clone()); }
         return fresh;
       } catch (e) {
