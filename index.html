@@ -3,32 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f1ede4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#f3ede6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171510" media="(prefers-color-scheme: dark)">
 <title>Habits</title>
 
 <!--
-  HABIT TRACKER - STEP 3: HABITS AND ONE-TAP CHECK-OFF
+  HABIT TRACKER - STEP 4: COLORS, STREAKS, HISTORY, SKIP A DAY
 
   WHAT THIS FILE DOES
-  - Login, sign-up and log out (Supabase), same as step 2
-  - Add, edit and archive habits, each with its own weekly schedule
-  - Today tab: your habits for today, tap once to check one off
-  - A "Yesterday" switch, so a forgotten day is easy to fix
+  - Login, sign-up and log out (Supabase)
+  - Add, edit and archive habits, each with its own schedule and color
+  - Today tab: tap a habit once to check it off. The "..." button on each
+    row lets you skip a day (sick, travelling) without breaking your streak
+  - Yesterday switch, for a day you forgot
+  - Streaks: how many scheduled days in a row you've done a habit
+  - History tab: stats plus a month calendar for each habit. Tap any past
+    day to fix it
   - Everything is saved to your cloud database and syncs across devices
-
-  WHAT COMES NEXT (step 4)
-  - Streaks, a monthly history view, and the "skip a day" option
 
   HOW THE FILE IS ORGANIZED
   1. <style>  = how everything LOOKS
-  2. <body>   = the SCREENS and the pop-up form
+  2. <body>   = the SCREENS and the pop-ups
   3. <script> = the BEHAVIOR
 
   A NOTE ON THE LOOK
-  The app uses your phone's own system font (San Francisco on iPhone) so it
-  feels native and loads instantly. All colors live in one place, the
-  ":root" block below. Change a value there and the whole app updates.
+  The app uses your phone's own system font (San Francisco on iPhone).
+  All colors live in one place, the ":root" block below. Change a value
+  there and the whole app updates.
 -->
 
 <!-- Supabase's code library. It gives us ready-made login and database functions. -->
@@ -37,30 +38,33 @@
 <style>
   /* ---------- COLORS ----------
      A calm base of warm neutrals (oat and cream), one deep-sage accent for the
-     app itself, and six earth tones (--c0 to --c5) that give each habit its
-     own color. Change any value here and the whole app updates. */
+     app itself, and eight soft earth tones (--c0 to --c7) for your habits:
+     grounded ones (moss, terracotta, honey, slate, walnut, eucalyptus) plus
+     two gentle touches (rose and heather). */
   :root {
-    --bg: #f1ede4;                      /* warm oat page background */
-    --card: #fdfbf6;                    /* cream surface for grouped lists */
+    --bg: #f3ede6;                      /* warm oat page background */
+    --card: #fdfbf7;                    /* cream surface for grouped lists */
     --ink: #27231e;                     /* main text */
     --muted: #675f54;                   /* secondary text */
     --faint: #8f877a;                   /* chevrons and other quiet details */
     --line: rgba(60, 50, 35, 0.15);     /* thin dividers */
-    --fill: rgba(105, 85, 55, 0.10);    /* soft warm-taupe backgrounds */
+    --fill: rgba(110, 82, 62, 0.10);    /* soft warm-taupe backgrounds */
     --tint: #4d6853;                    /* the accent: deep sage */
     --tint-ink: #fbf8f1;                /* text on top of the accent */
     --danger: #b02f27;                  /* archive / log out / errors */
-    --seg-on: #fdfbf6;                  /* the selected Yesterday/Today segment */
-    --bar-bg: rgba(253, 251, 246, 0.80);/* frosted tab bar */
+    --seg-on: #fdfbf7;                  /* the selected Yesterday/Today segment */
+    --bar-bg: rgba(253, 251, 247, 0.80);/* frosted tab bar */
     --shadow: 0 1px 2px rgba(50, 40, 25, 0.06), 0 6px 20px rgba(50, 40, 25, 0.07);
 
-    /* Habit colors: each habit gets one of these, automatically */
-    --c0: #5b7a55;                      /* moss */
-    --c1: #bb6840;                      /* terracotta */
-    --c2: #a07318;                      /* ochre */
-    --c3: #4f6f8c;                      /* slate blue */
-    --c4: #94566b;                      /* plum */
-    --c5: #7d5a3c;                      /* walnut */
+    /* Habit colors */
+    --c0: #587651;                      /* moss */
+    --c1: #b05c36;                      /* terracotta */
+    --c2: #946812;                      /* honey */
+    --c3: #4f6f8c;                      /* slate */
+    --c4: #a65565;                      /* rose */
+    --c5: #7a6592;                      /* heather */
+    --c6: #3d7a72;                      /* eucalyptus */
+    --c7: #7d5a3c;                      /* walnut */
     --c-ink: #fffdf8;                   /* the check mark on top of a habit color */
     color-scheme: light dark;
   }
@@ -72,7 +76,7 @@
       --bar-bg: rgba(34, 31, 25, 0.80); --seg-on: #3c372e;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
       --c0: #8fb386; --c1: #e29870; --c2: #dbb057; --c3: #8fb2d0;
-      --c4: #d198ad; --c5: #d0a87e; --c-ink: #17120c;
+      --c4: #e3a1ad; --c5: #b9a6d6; --c6: #7fc2b8; --c7: #d0a87e; --c-ink: #17120c;
     }
   }
 
@@ -122,6 +126,7 @@
     border-radius: 14px; overflow: hidden;
   }
   .group.pad { padding: 14px 16px 12px; }
+  .group + .group { margin-top: 14px; }
 
   /* One row inside a group: a label on the left, a value or input on the right */
   .field { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 52px; position: relative; }
@@ -140,7 +145,9 @@
     display: block; width: 100%; border-radius: 0; background: transparent;
     border-top: 0.5px solid var(--line); min-height: 52px; font-weight: 500;
   }
+  .group > .row-action:first-child { border-top: 0; }
   .row-action.red { color: var(--danger); }
+  .row-action.tint { color: var(--tint); }
 
   .error { color: var(--danger); font-size: 0.9375rem; min-height: 1.3em; margin: 0 4px; }
   .status { color: var(--muted); font-size: 0.9375rem; min-height: 1.3em; }
@@ -165,8 +172,8 @@
   /* The row of seven dots = a week of habits. It fills in once, on load. */
   .week { display: block; width: 112px; height: 16px; margin-bottom: 20px; }
   .dot-on  { transform-box: fill-box; transform-origin: center; animation: pop 400ms ease-out both; }
-  .dot-on.c0 { fill: var(--c0); } .dot-on.c1 { fill: var(--c1); } .dot-on.c2 { fill: var(--c2); }
-  .dot-on.c3 { fill: var(--c3); } .dot-on.c4 { fill: var(--c4); }
+  .dot-on.d0 { fill: var(--c0); } .dot-on.d1 { fill: var(--c4); } .dot-on.d2 { fill: var(--c2); }
+  .dot-on.d3 { fill: var(--c5); } .dot-on.d4 { fill: var(--c6); }
   .dot-off { fill: none; stroke: var(--faint); stroke-width: 2; }
   .dot-on:nth-child(1) { animation-delay: 100ms; }
   .dot-on:nth-child(2) { animation-delay: 170ms; }
@@ -183,14 +190,13 @@
   .panel { animation: fade 160ms ease-out; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   .date { color: var(--muted); margin: 4px 0 0; }
-  .panel > .group, .panel > .btn-row { margin-top: 18px; }
+  #todayView, #habitsView, #historyView { margin-top: 18px; }
 
   /* Yesterday / Today switch (like an iPhone segmented control) */
   .seg {
     display: grid; grid-template-columns: 1fr 1fr; background: var(--fill);
     border-radius: 10px; padding: 2px; margin: 18px 0 0;
   }
-  #todayView, #habitsView { margin-top: 18px; }
   .seg button {
     min-height: 36px; border-radius: 8px; background: transparent; color: var(--ink);
     font-size: 0.9375rem; font-weight: 500; padding: 4px 12px;
@@ -208,44 +214,107 @@
   .segs span { flex: 1; height: 6px; border-radius: 99px; background: var(--fill); transition: background-color 200ms ease; }
   .segs span.on { background: var(--hc); }
 
-  /* Habit rows */
+  /* Habit rows on the Today tab: [check button .......... "..." button] */
+  .habit-line { display: flex; align-items: stretch; position: relative; }
+  .habit-line + .habit-line::before {
+    content: ""; position: absolute; top: 0; left: 58px; right: 0; border-top: 0.5px solid var(--line);
+  }
+  .more-btn {
+    flex: none; width: 52px; min-height: 58px; padding: 0; border-radius: 0;
+    background: transparent; color: var(--faint); display: grid; place-items: center;
+  }
+  .more-btn svg { width: 22px; height: 22px; }
+  .more-btn:focus-visible { outline-offset: -3px; }
+
   .habit-row {
     display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
-    background: transparent; border-radius: 0; padding: 0 16px; min-height: 58px;
-    font-weight: 500; position: relative;
+    background: transparent; border-radius: 0; padding: 8px 16px; min-height: 58px;
+    font-weight: 500; position: relative; min-width: 0;
   }
+  .habit-line .habit-row { flex: 1; width: auto; }
   .habit-row + .habit-row::before {
     content: ""; position: absolute; top: 0; left: 58px; right: 0; border-top: 0.5px solid var(--line);
   }
   .habit-row.edit + .habit-row.edit::before { left: 38px; }
   .habit-row:active:not(:disabled) { opacity: 1; background: var(--fill); }
   .habit-row:focus-visible { outline-offset: -3px; }
+  .habit-row .stack { display: grid; gap: 1px; min-width: 0; }
+  .habit-row .label { overflow-wrap: anywhere; }
+  .habit-row .sub, .habit-row .sched { font-size: 0.8125rem; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .habit-row .sched { font-size: 0.875rem; }
 
   .circle {
-    flex: none; width: 28px; height: 28px; border-radius: 50%;
+    flex: none; width: 28px; height: 28px; border-radius: 50%; position: relative;
     border: 1.75px solid var(--hc, var(--faint)); display: grid; place-items: center; color: var(--c-ink);
   }
   .circle svg { width: 16px; height: 16px; opacity: 0; }
   .habit-row[aria-checked="true"] .circle { background: var(--hc); }
   .habit-row[aria-checked="true"] .circle svg { opacity: 1; }
   .habit-row[aria-checked="true"] .label { color: var(--muted); }
+  .habit-row[data-state="skipped"] .circle { border-style: dashed; border-color: var(--faint); }
+  .habit-row[data-state="skipped"] .circle::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 2px;
+    margin: -1px 0 0 -5px; border-radius: 1px; background: var(--faint);
+  }
+  .habit-row[data-state="skipped"] .label { color: var(--muted); }
   .habit-row.just .circle { animation: tick 280ms cubic-bezier(0.2, 0.9, 0.3, 1.3); }
   @keyframes tick { 0% { transform: scale(0.82); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 
-  .habit-row.edit { justify-content: space-between; padding: 8px 16px; }
+  /* Habits tab rows */
+  .habit-row.edit { justify-content: space-between; }
   .habit-row .lead { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .habit-row .dot-hc { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); flex: none; }
-  .habit-row .stack { display: grid; gap: 1px; min-width: 0; }
-  .habit-row .sched { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
   .habit-row .chev { width: 18px; height: 18px; color: var(--faint); flex: none; }
 
   /* Empty states */
   .empty-card { padding: 26px 20px 20px; text-align: center; }
-  .empty-card .btn-row { margin-top: 4px; }
   .suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 20px; }
   .chip-btn { background: var(--fill); color: var(--tint); min-height: 40px; border-radius: 999px; padding: 0 16px; font-weight: 500; }
   .btn-row { display: grid; gap: 10px; }
   .after-list { margin-top: 18px; }
+
+  /* ---------- HISTORY TAB ---------- */
+  .chips {
+    display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px 14px; padding: 2px 20px 6px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .pick {
+    flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px;
+    border-radius: 999px; background: var(--fill); color: var(--ink); font-weight: 500; font-size: 0.9375rem;
+  }
+  .pick .dot-hc { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); }
+  .pick[aria-pressed="true"] { background: var(--card); box-shadow: inset 0 0 0 1.75px var(--hc); }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; }
+  .stat { padding: 14px 16px; min-width: 0; }
+  .stat:nth-child(odd) { border-right: 0.5px solid var(--line); }
+  .stat:nth-child(n+3) { border-top: 0.5px solid var(--line); }
+  .stat b { display: block; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .stat b small { font-size: 0.9375rem; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .stat span { color: var(--muted); font-size: 0.875rem; }
+
+  .cal-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 0; }
+  .cal-head h2 { margin: 0; font-size: 1.0625rem; }
+  .cal-nav { width: 44px; min-height: 44px; padding: 0; background: transparent; color: var(--tint); font-size: 1.5rem; font-weight: 500; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 0; padding: 4px 8px 12px; justify-items: center; }
+  .cal-dow { font-size: 0.75rem; color: var(--muted); padding: 6px 0 2px; }
+  .cell {
+    width: 38px; height: 38px; min-height: 38px; padding: 0; border-radius: 50%; position: relative;
+    display: grid; place-items: center; font-size: 0.9375rem; font-weight: 500;
+    background: transparent; color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .cell.rest { color: var(--muted); }
+  .cell.future, .cell.before { color: var(--faint); }
+  .cell.done { background: var(--hc); color: var(--c-ink); }
+  .cell.missed { background: var(--fill); }
+  .cell.skipped { color: var(--muted); outline: 1.5px dashed var(--faint); outline-offset: -2px; }
+  .cell.today::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1.5px solid var(--tint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0 16px 14px; color: var(--muted); font-size: 0.8125rem; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .legend .l-done { background: var(--hc); }
+  .legend .l-skip { outline: 1.5px dashed var(--faint); outline-offset: -2px; }
+  .legend .l-miss { background: var(--fill); box-shadow: inset 0 0 0 0.5px var(--line); }
 
   /* ---------- BOTTOM TAB BAR (frosted glass) ---------- */
   .tabbar {
@@ -264,7 +333,7 @@
   .tab svg { width: 26px; height: 26px; }
   .tab[aria-current="page"] { color: var(--tint); }
 
-  /* ---------- ADD / EDIT POP-UP ---------- */
+  /* ---------- POP-UPS (add / edit a habit, and the "..." menu) ---------- */
   dialog.sheet {
     padding: 0; border: 0; background: var(--bg); color: var(--ink);
     border-radius: 20px; width: calc(100% - 24px); max-width: 480px;
@@ -277,11 +346,12 @@
     -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
   }
   .sheet-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 8px; }
-  .sheet-bar h2 { margin: 0; font-size: 1.0625rem; text-align: center; }
+  .sheet-bar h2 { margin: 0; font-size: 1.0625rem; text-align: center; max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bar-btn { background: transparent; color: var(--tint); min-height: 44px; padding: 0 12px; font-weight: 400; }
   .bar-btn.strong { font-weight: 600; justify-self: end; }
-  #sheetCancel { justify-self: start; }
+  #sheetCancel, #actionClose { justify-self: start; }
   .sheet-body { padding: 4px 16px 18px; display: grid; gap: 16px; }
+  .sheet-date { text-align: center; margin: 0; color: var(--muted); font-size: 0.9375rem; }
 
   .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .day {
@@ -290,6 +360,13 @@
   }
   .day[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
   .presets { display: flex; gap: 18px; margin-top: 12px; }
+
+  /* The color choices: four per row, each a big easy tap */
+  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 0; justify-items: center; }
+  .swatch { width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; background: var(--hc); position: relative; }
+  .swatch[aria-checked="true"]::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2.5px solid var(--ink);
+  }
 
   /* ---------- TOAST (the small message with "Undo") ---------- */
   .toast {
@@ -316,13 +393,13 @@
 
 <!-- SCREEN 2: LOG IN / CREATE ACCOUNT (one form that switches modes) -->
 <main id="authScreen" class="auth-screen" hidden>
-  <!-- Seven dots: five filled, two empty -->
+  <!-- Seven dots: five filled in earth tones, two empty -->
   <svg class="week" viewBox="0 0 112 16" aria-hidden="true">
-    <circle class="dot-on c0" cx="8"   cy="8" r="6"/>
-    <circle class="dot-on c1" cx="24"  cy="8" r="6"/>
-    <circle class="dot-on c2" cx="40"  cy="8" r="6"/>
-    <circle class="dot-on c3" cx="56"  cy="8" r="6"/>
-    <circle class="dot-on c4" cx="72"  cy="8" r="6"/>
+    <circle class="dot-on d0" cx="8"   cy="8" r="6"/>
+    <circle class="dot-on d1" cx="24"  cy="8" r="6"/>
+    <circle class="dot-on d2" cx="40"  cy="8" r="6"/>
+    <circle class="dot-on d3" cx="56"  cy="8" r="6"/>
+    <circle class="dot-on d4" cx="72"  cy="8" r="6"/>
     <circle class="dot-off" cx="88"  cy="8" r="5"/>
     <circle class="dot-off" cx="104" cy="8" r="5"/>
   </svg>
@@ -384,10 +461,7 @@
     <!-- HISTORY TAB -->
     <section class="panel" id="tab-history" hidden>
       <h1>History</h1>
-      <div class="group pad">
-        <h2>Coming soon</h2>
-        <p class="muted" style="margin:0">Your weeks, streaks and monthly view will appear here.</p>
-      </div>
+      <div id="historyView"></div>
     </section>
 
     <!-- HABITS TAB -->
@@ -423,7 +497,7 @@
   </nav>
 </div>
 
-<!-- THE ADD / EDIT POP-UP. A <dialog> is a built-in browser pop-up: it dims
+<!-- POP-UP 1: ADD / EDIT A HABIT. A <dialog> is a built-in browser pop-up: it dims
      the page, traps the keyboard focus inside, and closes with the Escape key. -->
 <dialog id="habitSheet" class="sheet" aria-labelledby="sheetTitle">
   <form id="habitForm" novalidate>
@@ -440,6 +514,10 @@
                  enterkeyhint="done" placeholder="Walk for 20 minutes">
         </div>
       </div>
+      <div class="group pad" id="colorGroup">
+        <div class="field-label" id="colorLabel">Color</div>
+        <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="colorLabel"></div>
+      </div>
       <div class="group pad">
         <div class="field-label" id="daysLabel">Repeat on</div>
         <div class="days" id="days" role="group" aria-labelledby="daysLabel"></div>
@@ -452,6 +530,23 @@
       <button type="button" class="danger" id="sheetArchive" hidden>Archive habit</button>
     </div>
   </form>
+</dialog>
+
+<!-- POP-UP 2: THE "..." MENU ON A TODAY ROW -->
+<dialog id="actionSheet" class="sheet" aria-labelledby="actionTitle">
+  <header class="sheet-bar">
+    <button type="button" class="bar-btn" id="actionClose">Close</button>
+    <h2 id="actionTitle">Habit</h2>
+    <span></span>
+  </header>
+  <div class="sheet-body">
+    <p class="sheet-date" id="actionDate"></p>
+    <div class="group">
+      <button type="button" class="row-action tint" id="actionSkip">Skip this day</button>
+      <button type="button" class="row-action tint" id="actionEdit">Edit habit</button>
+    </div>
+    <p class="footnote" style="margin:0 4px">Skipped days never break your streak. Use them for sick days or travel.</p>
+  </div>
 </dialog>
 
 <!-- The small message that appears at the bottom, sometimes with "Undo" -->
@@ -511,48 +606,53 @@
   // Your habit data. Rule of thumb: change the data, then redraw the screen.
   const state = {
     habits: [],             // your active habits
-    done: new Set(),        // check-offs, stored like "habitId|2026-10-08"
+    marks: new Map(),       // what you did each day: "habitId|2026-10-08" -> "done" or "skipped"
     loading: false,         // true while we fetch from the database
     loadError: false,       // true if fetching failed
-    viewMode: "today"       // which day the Today tab shows: "today" or "yesterday"
+    hasColor: true,         // false if the database doesn't have the color column yet
+    viewMode: "today",      // which day the Today tab shows: "today" or "yesterday"
+    historyHabitId: null,   // which habit the History tab is showing
+    historyMonth: null      // which month the History calendar is showing (null = this month)
   };
   let sheetEditing = null;      // the habit being edited in the pop-up (null = adding a new one)
   let sheetDays = new Set();    // the weekdays picked in the pop-up (0 = Sunday ... 6 = Saturday)
+  let sheetColor = 0;           // the color picked in the pop-up (0-7)
+  let actionTarget = null;      // the habit and day the "..." menu is open for
   let pendingOps = 0;           // how many saves are still in flight
   const queues = new Map();     // keeps saves for the same habit-and-day in order
   let toastTimer = null;
 
+  const WINDOW_DAYS = 400;      // how far back we load your history
+  const NCOLORS = 8;
+  const COLOR_NAMES = ["Moss", "Terracotta", "Honey", "Slate", "Rose", "Heather", "Eucalyptus", "Walnut"];
   const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const DAY_LONG  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const SUGGESTIONS = ["Walk", "Read", "Drink water", "Stretch", "Journal"];
 
   const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const CHEVRON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+  const DOTS_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>';
 
   // ======================================================================
   // 3. DATES
   // IMPORTANT: we build dates from the phone's LOCAL clock. Using the
   // built-in toISOString() would use UTC time, which flips to "tomorrow"
-  // in the evening for people in the US. This helper avoids that bug.
+  // in the evening for people in the US. These helpers avoid that bug.
+  // We use noon (12:00) as the time of day to dodge daylight-saving edge cases.
   // ======================================================================
   const pad = n => String(n).padStart(2, "0");
   const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); // "2026-10-08"
+  function noon(d) { const x = new Date(d); x.setHours(12, 0, 0, 0); return x; }
+  function addDays(d, n) { const x = noon(d); x.setDate(x.getDate() + n); return x; }
+  const todayNoon = () => noon(new Date());
+  const monthStart = d => new Date(d.getFullYear(), d.getMonth(), 1, 12);
+  function parseYmd(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 12); }
+  const longDate = d => d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
-  // The day the Today tab is showing (we use noon to dodge daylight-saving edge cases)
-  function viewDate() {
-    const d = new Date();
-    d.setHours(12, 0, 0, 0);
-    if (state.viewMode === "yesterday") d.setDate(d.getDate() - 1);
-    return d;
-  }
+  // The day the Today tab is showing
+  const viewDate = () => addDays(todayNoon(), state.viewMode === "yesterday" ? -1 : 0);
 
-  // Every habit gets one of six earth-tone colors. The color comes from the
-  // habit's id, so a habit keeps the same color forever, on every device.
-  function colorVar(habit) {
-    let hash = 0;
-    for (const ch of String(habit.id)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    return "var(--c" + (hash % 6) + ")";
-  }
+  const isScheduled = (habit, d) => (habit.days || []).includes(d.getDay());
 
   // "Every day", "Weekdays", "Mon, Wed, Fri" ...
   function scheduleText(days) {
@@ -565,7 +665,77 @@
   }
 
   // ======================================================================
-  // 4. SWITCHING SCREENS AND TABS
+  // 4. HABIT COLORS
+  // If you picked a color for a habit we use it. Otherwise we pick one
+  // automatically from the habit's id, so it always stays the same.
+  // ======================================================================
+  function colorIndex(habit) {
+    if (Number.isInteger(habit.color) && habit.color >= 0 && habit.color < NCOLORS) return habit.color;
+    let hash = 0;
+    for (const ch of String(habit.id)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return hash % NCOLORS;
+  }
+  const colorVar = habit => "var(--c" + colorIndex(habit) + ")";
+
+  // For a new habit, suggest the first color that no other habit uses yet.
+  function nextFreeColor() {
+    const used = new Set(state.habits.map(colorIndex));
+    for (let i = 0; i < NCOLORS; i++) if (!used.has(i)) return i;
+    return state.habits.length % NCOLORS;
+  }
+
+  // ======================================================================
+  // 5. STREAKS
+  // A streak counts scheduled days in a row that you did a habit.
+  //  - Days the habit isn't scheduled are ignored (they never break it).
+  //  - Skipped days are ignored too (they never break it).
+  //  - Today doesn't break a streak until the day is over.
+  // ======================================================================
+
+  // The first day this habit "existed" (so earlier days never count as missed)
+  function habitStartStr(habit) {
+    const created = ymd(new Date(habit.created_at));
+    const today = todayNoon();
+    for (let i = WINDOW_DAYS; i >= 0; i--) {
+      const ds = ymd(addDays(today, -i));
+      if (ds >= created || state.marks.has(habit.id + "|" + ds)) return ds;
+    }
+    return created;
+  }
+
+  function streakInfo(habit) {
+    const today = todayNoon();
+    const todayStr = ymd(today);
+    const thirtyAgo = ymd(addDays(today, -29));
+    const start = habitStartStr(habit);
+    let run = 0, best = 0, total = 0, doneRecent = 0, missedRecent = 0;
+
+    for (let i = WINDOW_DAYS; i >= 0; i--) {
+      const d = addDays(today, -i);
+      const ds = ymd(d);
+      if (ds < start) continue;
+      const mark = state.marks.get(habit.id + "|" + ds);
+      if (mark === "done") total++;
+      if (!isScheduled(habit, d)) continue;
+      if (mark === "done") {
+        run++;
+        best = Math.max(best, run);
+        if (ds >= thirtyAgo) doneRecent++;
+      } else if (mark === "skipped") {
+        // skipped: neither helps nor hurts
+      } else if (ds === todayStr) {
+        // today isn't over yet: it can't break the streak
+      } else {
+        run = 0;
+        if (ds >= thirtyAgo) missedRecent++;
+      }
+    }
+    const counted = doneRecent + missedRecent;
+    return { current: run, best, total, rate: counted ? Math.round((doneRecent / counted) * 100) : null };
+  }
+
+  // ======================================================================
+  // 6. SWITCHING SCREENS AND TABS
   // ======================================================================
   const SCREENS = { splash: "splash", auth: "authScreen", check: "checkScreen", app: "appScreen" };
 
@@ -606,7 +776,7 @@
   }
 
   // ======================================================================
-  // 5. SMALL HELPERS
+  // 7. SMALL HELPERS
   // ======================================================================
   function setError(message) { $("authError").textContent = message; }
 
@@ -656,7 +826,7 @@
   const pageUrl = window.location.origin + window.location.pathname;
 
   // ======================================================================
-  // 6. LOGGING IN AND CREATING AN ACCOUNT (same as step 2)
+  // 8. LOGGING IN AND CREATING AN ACCOUNT
   // ======================================================================
   async function handleAuth(event) {
     event.preventDefault(); // stop the page from reloading
@@ -677,7 +847,7 @@
       if (mode === "login") {
         const { error } = await db.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // Success: the "auth state listener" (section 11) shows the app.
+        // Success: the "auth state listener" (section 14) shows the app.
       } else {
         const { data, error } = await db.auth.signUp({
           email, password, options: { emailRedirectTo: pageUrl }
@@ -727,11 +897,27 @@
   }
 
   // ======================================================================
-  // 7. LOADING YOUR DATA FROM THE DATABASE
-  // We fetch your active habits, plus your check-offs from yesterday
-  // onward (that's all the Today tab needs).
+  // 9. LOADING YOUR DATA FROM THE DATABASE
+  // We fetch your active habits, plus your check-offs for the last 400 days
+  // (that's what streaks and the History calendar need).
   // "silent" = refresh in the background without the "Loading…" message.
   // ======================================================================
+
+  // The database hands out at most 1,000 rows at a time, so we ask page by
+  // page until we have everything. (Otherwise old history could go missing.)
+  async function fetchAllPages(makeQuery) {
+    const PAGE = 1000;
+    let all = [];
+    for (let from = 0; ; from += PAGE) {
+      const res = await makeQuery().range(from, from + PAGE - 1);
+      if (res.error) throw res.error;
+      const rows = res.data || [];
+      all = all.concat(rows);
+      if (rows.length < PAGE) break;
+    }
+    return all;
+  }
+
   async function loadData(silent = false) {
     if (!silent) {
       state.loading = true;
@@ -739,24 +925,31 @@
       renderAll();
     }
     try {
-      const yesterday = new Date();
-      yesterday.setHours(12, 0, 0, 0);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const since = ymd(addDays(todayNoon(), -WINDOW_DAYS));
 
-      // Ask for both lists at the same time (faster than one after another).
-      // Row Level Security makes the database return ONLY your rows.
-      const [habitsRes, checksRes] = await Promise.all([
-        db.from("habits").select("id,name,days,created_at").eq("archived", false).order("created_at", { ascending: true }),
-        db.from("check_ins").select("habit_id,day,status").gte("day", ymd(yesterday))
-      ]);
+      // Ask for the habits. If the database doesn't have the "color" column
+      // yet (you haven't run step4.sql), ask again without it so the app
+      // still works. Habit colors then stay automatic.
+      let hasColor = true;
+      let habitsRes = await db.from("habits").select("id,name,days,created_at,color")
+        .eq("archived", false).order("created_at", { ascending: true });
+      if (habitsRes.error && /color/i.test(habitsRes.error.message || "")) {
+        hasColor = false;
+        habitsRes = await db.from("habits").select("id,name,days,created_at")
+          .eq("archived", false).order("created_at", { ascending: true });
+      }
       if (habitsRes.error) throw habitsRes.error;
-      if (checksRes.error) throw checksRes.error;
+
+      // Row Level Security makes the database return ONLY your rows.
+      const checks = await fetchAllPages(() =>
+        db.from("check_ins").select("habit_id,day,status").gte("day", since)
+          .order("day", { ascending: true }).order("habit_id", { ascending: true })
+      );
       if (!user) return; // logged out while loading: throw the result away
 
+      state.hasColor = hasColor;
       state.habits = habitsRes.data || [];
-      state.done = new Set(
-        (checksRes.data || []).filter(r => r.status === "done").map(r => r.habit_id + "|" + r.day)
-      );
+      state.marks = new Map(checks.map(r => [r.habit_id + "|" + r.day, r.status]));
       state.loadError = false;
     } catch (err) {
       if (!silent) state.loadError = true;
@@ -769,21 +962,27 @@
   // Clear everything when someone logs out, so the next person starts fresh.
   function resetData() {
     state.habits = [];
-    state.done = new Set();
+    state.marks = new Map();
     state.loading = false;
     state.loadError = false;
+    state.hasColor = true;
     state.viewMode = "today";
+    state.historyHabitId = null;
+    state.historyMonth = null;
     queues.clear();
-    if ($("habitSheet").open) $("habitSheet").close();
+    for (const id of ["habitSheet", "actionSheet"]) if ($(id).open) $(id).close();
     hideToast();
   }
 
   // ======================================================================
-  // 8. DRAWING THE TODAY AND HABITS TABS
+  // 10. DRAWING THE TABS
   // ======================================================================
-  function renderAll() {
-    renderToday();
+  // opts.justKey = the row that was just tapped (for the little pop animation)
+  // opts.focusDay = the calendar day that was just tapped (to keep keyboard focus)
+  function renderAll(opts = {}) {
+    renderToday(opts.justKey);
     renderHabitsTab();
+    renderHistory(opts.focusDay);
   }
 
   // A small card shown when loading fails, with a button to retry.
@@ -802,7 +1001,7 @@
     const yesterday = state.viewMode === "yesterday";
 
     $("todayTitle").textContent = yesterday ? "Yesterday" : "Today";
-    $("todayDate").textContent = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    $("todayDate").textContent = longDate(date);
     $("segToday").setAttribute("aria-pressed", String(!yesterday));
     $("segYesterday").setAttribute("aria-pressed", String(yesterday));
     $("seg").hidden = state.loading || state.loadError || state.habits.length === 0;
@@ -827,7 +1026,7 @@
     }
 
     // Only habits scheduled for this weekday (getDay: 0 = Sunday ... 6 = Saturday)
-    const scheduled = state.habits.filter(h => (h.days || []).includes(date.getDay()));
+    const scheduled = state.habits.filter(h => isScheduled(h, date));
 
     if (scheduled.length === 0) {
       box.append(el("div", { class: "group empty-card" },
@@ -838,32 +1037,49 @@
       return;
     }
 
-    const doneCount = scheduled.filter(h => state.done.has(h.id + "|" + day)).length;
-    const allDone = doneCount === scheduled.length;
+    const markOf = h => state.marks.get(h.id + "|" + day);
+    const active = scheduled.filter(h => markOf(h) !== "skipped");   // skipped habits don't count
+    const doneCount = active.filter(h => markOf(h) === "done").length;
+    const allDone = active.length > 0 && doneCount === active.length;
 
-    box.append(
-      el("div", { class: "summary" },
-        el("strong", { text: allDone ? "All done. Nice work." : doneCount + " of " + scheduled.length + " done" }),
-        el("span", { text: allDone ? "" : (scheduled.length - doneCount) + " to go" })
-      ),
+    box.append(el("div", { class: "summary" },
+      el("strong", { text: active.length === 0 ? "Everything skipped" : allDone ? "All done. Nice work." : doneCount + " of " + active.length + " done" }),
+      el("span", { text: active.length === 0 || allDone ? "" : (active.length - doneCount) + " to go" })
+    ));
+    if (active.length > 0) {
       // One segment per habit: it fills with that habit's color when checked off.
-      el("div", { class: "segs", "aria-hidden": "true" }, ...scheduled.map(h =>
-        el("span", { class: state.done.has(h.id + "|" + day) ? "on" : "", style: "--hc:" + colorVar(h) })
-      ))
-    );
+      box.append(el("div", { class: "segs", "aria-hidden": "true" }, ...active.map(h =>
+        el("span", { class: markOf(h) === "done" ? "on" : "", style: "--hc:" + colorVar(h) })
+      )));
+    } else {
+      box.append(el("div", { style: "height:8px" }));
+    }
 
-    // The list. Each row is a checkbox you tap once to check, again to undo.
+    // The list. Each row has a checkbox you tap once to check, again to undo,
+    // and a "..." button for more options.
     const list = el("div", { class: "group", role: "group", "aria-label": "Habits for " + (yesterday ? "yesterday" : "today") });
     for (const habit of scheduled) {
       const key = habit.id + "|" + day;
-      const checked = state.done.has(key);
+      const mark = markOf(habit);
+      const streak = streakInfo(habit).current;
+      const sub = mark === "skipped" ? "Skipped" : streak >= 2 ? streak + "-day streak" : "";
+
       const circle = el("span", { class: "circle" });
       circle.innerHTML = CHECK_SVG; // fixed drawing, not user text, so this is safe
-      list.append(el("button", {
+      const check = el("button", {
         type: "button", class: "habit-row", role: "checkbox",
-        "aria-checked": String(checked), "data-key": key, style: "--hc:" + colorVar(habit),
+        "aria-checked": String(mark === "done"), "data-key": key, "data-state": mark || "",
         onclick: () => toggleDone(habit, day)
-      }, circle, el("span", { class: "label", text: habit.name })));
+      }, circle, el("span", { class: "stack" },
+        el("span", { class: "label", text: habit.name }),
+        ...(sub ? [el("span", { class: "sub", text: sub })] : [])
+      ));
+      const more = el("button", {
+        type: "button", class: "more-btn", "aria-label": "More options for " + habit.name,
+        onclick: () => openActions(habit, day)
+      });
+      more.innerHTML = DOTS_SVG;
+      list.append(el("div", { class: "habit-line", style: "--hc:" + colorVar(habit) }, check, more));
     }
     box.append(list);
     box.append(el("button", { type: "button", class: "secondary after-list", text: "Add habit", onclick: () => openSheet() }));
@@ -918,24 +1134,124 @@
     box.append(el("div", { class: "after-list" }, list));
   }
 
+  // The History tab: pick a habit, see its stats, and see a month calendar.
+  function renderHistory(focusDay) {
+    const box = $("historyView");
+    box.replaceChildren();
+
+    if (state.loading) { box.append(el("p", { class: "muted", text: "Loading your history…" })); return; }
+    if (state.loadError) { box.append(errorCard()); return; }
+    if (state.habits.length === 0) {
+      box.append(el("div", { class: "group empty-card" },
+        el("h2", { text: "No history yet" }),
+        el("p", { class: "muted", text: "Add a habit and check it off. Your streaks and calendar will show up here." })
+      ));
+      return;
+    }
+
+    const habit = state.habits.find(h => h.id === state.historyHabitId) || state.habits[0];
+    state.historyHabitId = habit.id;
+
+    // 1. Habit picker
+    box.append(el("div", { class: "chips", role: "group", "aria-label": "Choose a habit" },
+      ...state.habits.map(h => el("button", {
+        type: "button", class: "pick", "aria-pressed": String(h.id === habit.id),
+        style: "--hc:" + colorVar(h),
+        onclick: () => { state.historyHabitId = h.id; renderHistory(); }
+      }, el("span", { class: "dot-hc", "aria-hidden": "true" }), h.name))
+    ));
+
+    // 2. Stats
+    const info = streakInfo(habit);
+    const days = n => el("b", {}, String(n), el("small", { text: n === 1 ? " day" : " days" }));
+    box.append(el("div", { class: "group stats" },
+      el("div", { class: "stat" }, days(info.current), el("span", { text: "Current streak" })),
+      el("div", { class: "stat" }, days(info.best), el("span", { text: "Best streak" })),
+      el("div", { class: "stat" }, el("b", { text: info.rate === null ? "–" : info.rate + "%" }), el("span", { text: "Last 30 days" })),
+      el("div", { class: "stat" }, el("b", { text: String(info.total) }), el("span", { text: "Total done" }))
+    ));
+
+    // 3. Month calendar
+    const today = todayNoon();
+    const todayStr = ymd(today);
+    const startStr = habitStartStr(habit);
+    const curMonth = monthStart(today);
+    const minMonth = monthStart(addDays(today, -WINDOW_DAYS));
+    const month = state.historyMonth || curMonth;
+    const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    const shift = delta => { state.historyMonth = new Date(month.getFullYear(), month.getMonth() + delta, 1, 12); renderHistory(); };
+    const monthName = month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+    const prev = el("button", { type: "button", class: "cal-nav", "aria-label": "Previous month", text: "‹", onclick: () => shift(-1) });
+    const next = el("button", { type: "button", class: "cal-nav", "aria-label": "Next month", text: "›", onclick: () => shift(1) });
+    prev.disabled = month.getTime() <= minMonth.getTime();
+    next.disabled = month.getTime() >= curMonth.getTime();
+
+    const grid = el("div", { class: "cal-grid", role: "group", "aria-label": monthName });
+    for (const letter of ["S", "M", "T", "W", "T", "F", "S"]) grid.append(el("span", { class: "cal-dow", "aria-hidden": "true", text: letter }));
+    for (let i = 0; i < month.getDay(); i++) grid.append(el("span", { class: "cell blank", "aria-hidden": "true" }));
+
+    for (let n = 1; n <= daysInMonth; n++) {
+      const d = new Date(month.getFullYear(), month.getMonth(), n, 12);
+      const ds = ymd(d);
+      const mark = state.marks.get(habit.id + "|" + ds);
+      let cls = "cell", clickable = false, what = "";
+      if (ds > todayStr) cls += " future";
+      else if (ds < startStr) cls += " before";
+      else if (!isScheduled(habit, d)) { cls += " rest"; what = "rest day"; }
+      else if (mark === "done") { cls += " done"; clickable = true; what = "done"; }
+      else if (mark === "skipped") { cls += " skipped"; clickable = true; what = "skipped"; }
+      else if (ds === todayStr) { cls += " pending"; clickable = true; what = "not done yet"; }
+      else { cls += " missed"; clickable = true; what = "missed"; }
+      if (ds === todayStr) cls += " today";
+      const label = longDate(d) + (what ? ": " + what : "");
+
+      if (clickable) {
+        // Tap a day to fix it: done <-> not done
+        grid.append(el("button", {
+          type: "button", class: cls, "data-day": ds, "aria-label": label,
+          onclick: () => setMark(habit, ds, mark === "done" ? null : "done", { focusDay: ds })
+        }, String(n)));
+      } else {
+        grid.append(el("span", { class: cls, "data-day": ds, "aria-label": label }, String(n)));
+      }
+    }
+
+    box.append(el("div", { class: "group", style: "--hc:" + colorVar(habit) },
+      el("div", { class: "cal-head" }, prev, el("h2", { text: monthName }), next),
+      grid,
+      el("div", { class: "legend", "aria-hidden": "true" },
+        el("span", {}, el("i", { class: "l-done" }), "Done"),
+        el("span", {}, el("i", { class: "l-skip" }), "Skipped"),
+        el("span", {}, el("i", { class: "l-miss" }), "Missed")
+      )
+    ));
+    box.append(el("p", { class: "footnote", text: "Tap a day to mark it done or undo it." }));
+
+    if (focusDay) {
+      const cell = grid.querySelector('[data-day="' + focusDay + '"]');
+      if (cell && cell.tagName === "BUTTON") cell.focus({ preventScroll: true });
+    }
+  }
+
   // ======================================================================
-  // 9. CHECKING A HABIT OFF
+  // 11. CHECKING A HABIT OFF (or skipping a day)
   // We update the screen FIRST (so it feels instant), then save in the
   // background. If saving fails, we say so and reload the true state.
+  // status: "done", "skipped", or null (= clear it)
   // ======================================================================
-  function toggleDone(habit, day) {
+  function setMark(habit, day, status, opts = {}) {
     const key = habit.id + "|" + day;
-    const nowDone = !state.done.has(key);
-    if (nowDone) state.done.add(key); else state.done.delete(key);
-    renderToday(key);
+    if (status) state.marks.set(key, status); else state.marks.delete(key);
+    renderAll(opts);
 
     // Saves for the same habit and day run one after another, so tapping
     // fast (check, uncheck, check) always ends in the right state.
     pendingOps++;
     const previous = queues.get(key) || Promise.resolve();
     const op = previous.then(async () => {
-      const result = nowDone
-        ? await db.from("check_ins").upsert({ habit_id: habit.id, day, status: "done" }, { onConflict: "habit_id,day" })
+      const result = status
+        ? await db.from("check_ins").upsert({ habit_id: habit.id, day, status }, { onConflict: "habit_id,day" })
         : await db.from("check_ins").delete().eq("habit_id", habit.id).eq("day", day);
       if (result.error) throw result.error;
     });
@@ -946,8 +1262,47 @@
     }).finally(() => { pendingOps--; });
   }
 
+  // Tapping a row: done <-> not done. (A skipped day becomes done.)
+  function toggleDone(habit, day) {
+    const key = habit.id + "|" + day;
+    setMark(habit, day, state.marks.get(key) === "done" ? null : "done", { justKey: key });
+  }
+
   // ======================================================================
-  // 10. THE ADD / EDIT POP-UP
+  // 12. THE "..." MENU ON A ROW (skip a day, or edit the habit)
+  // ======================================================================
+  function openActions(habit, day) {
+    actionTarget = { habit, day };
+    $("actionTitle").textContent = habit.name;
+    $("actionDate").textContent = longDate(parseYmd(day));
+    $("actionSkip").textContent = state.marks.get(habit.id + "|" + day) === "skipped" ? "Clear skip" : "Skip this day";
+    $("actionSheet").showModal();
+  }
+
+  function handleSkip() {
+    const target = actionTarget;
+    if (!target) return;
+    $("actionSheet").close();
+    const { habit, day } = target;
+    const key = habit.id + "|" + day;
+    const before = state.marks.get(key) || null;
+
+    if (before === "skipped") { setMark(habit, day, null, { justKey: key }); return; }
+    setMark(habit, day, "skipped", { justKey: key });
+    showToast("Skipped. Your streak stays safe.", {
+      label: "Undo", onClick: () => setMark(habit, day, before, { justKey: key })
+    });
+  }
+
+  function handleActionEdit() {
+    const target = actionTarget;
+    if (!target) return;
+    $("actionSheet").close();
+    openSheet({ habit: target.habit });
+  }
+
+  // ======================================================================
+  // 13. THE ADD / EDIT POP-UP
   // ======================================================================
   // Open the pop-up. Pass { habit } to edit one, or { name } to start a new
   // one with a suggested name already filled in.
@@ -959,7 +1314,10 @@
     $("sheetArchive").hidden = !habit;
     $("habitName").value = habit ? habit.name : (opts.name || "");
     sheetDays = new Set(habit ? habit.days : [0, 1, 2, 3, 4, 5, 6]);
+    sheetColor = habit ? colorIndex(habit) : nextFreeColor();
+    $("colorGroup").hidden = !state.hasColor;
     renderDayChips();
+    renderSwatches();
     $("sheetError").textContent = "";
     $("sheetSave").disabled = false;
     $("sheetArchive").disabled = false;
@@ -985,6 +1343,23 @@
     });
   }
 
+  // The eight color circles. Tap one to choose it.
+  function renderSwatches() {
+    const box = $("swatches");
+    box.replaceChildren();
+    COLOR_NAMES.forEach((name, i) => {
+      const swatch = el("button", {
+        type: "button", class: "swatch", role: "radio", "aria-label": name,
+        "aria-checked": String(i === sheetColor), style: "--hc:var(--c" + i + ")"
+      });
+      swatch.addEventListener("click", () => {
+        sheetColor = i;
+        for (const other of box.children) other.setAttribute("aria-checked", String(other === swatch));
+      });
+      box.append(swatch);
+    });
+  }
+
   async function saveHabit(event) {
     event.preventDefault();
     const editing = sheetEditing;
@@ -994,18 +1369,20 @@
     if (!name) { $("sheetError").textContent = "Give your habit a name."; return; }
     if (days.length === 0) { $("sheetError").textContent = "Pick at least one day."; return; }
 
+    const fields = { name, days };
+    if (state.hasColor) fields.color = sheetColor;
+
     $("sheetError").textContent = "";
     $("sheetSave").disabled = true;
     try {
       if (editing) {
-        const { error } = await db.from("habits").update({ name, days }).eq("id", editing.id);
+        const { error } = await db.from("habits").update(fields).eq("id", editing.id);
         if (error) throw error;
-        editing.name = name;   // update our copy too
-        editing.days = days;
+        Object.assign(editing, fields);   // update our copy too
       } else {
         // The database fills in the id and your user id automatically.
         const { data, error } = await db.from("habits")
-          .insert({ name, days }).select("id,name,days,created_at").single();
+          .insert(fields).select(state.hasColor ? "id,name,days,created_at,color" : "id,name,days,created_at").single();
         if (error) throw error;
         state.habits.push(data);
       }
@@ -1044,7 +1421,7 @@
   }
 
   // ======================================================================
-  // 11. REACTING WHEN SOMEONE LOGS IN OR OUT
+  // 14. REACTING WHEN SOMEONE LOGS IN OR OUT
   // Supabase calls this function whenever the login state changes: when the
   // page opens, after logging in, after logging out, or after tapping an
   // email link. This one place decides which screen to show.
@@ -1088,7 +1465,7 @@
   });
 
   // ======================================================================
-  // 12. CONNECTING BUTTONS TO FUNCTIONS
+  // 15. CONNECTING BUTTONS TO FUNCTIONS
   // "When X is tapped, run Y."
   // ======================================================================
   $("authForm").addEventListener("submit", handleAuth);
@@ -1116,15 +1493,23 @@
   $("segYesterday").addEventListener("click", () => { state.viewMode = "yesterday"; renderToday(); });
   $("segToday").addEventListener("click", () => { state.viewMode = "today"; renderToday(); });
 
-  // The pop-up
+  // The add / edit pop-up
   $("habitForm").addEventListener("submit", saveHabit);
   $("sheetCancel").addEventListener("click", () => $("habitSheet").close());
   $("sheetArchive").addEventListener("click", archiveHabit);
   $("presetEvery").addEventListener("click", () => { sheetDays = new Set([0, 1, 2, 3, 4, 5, 6]); renderDayChips(); });
   $("presetWeekdays").addEventListener("click", () => { sheetDays = new Set([1, 2, 3, 4, 5]); renderDayChips(); });
-  // Tapping the dimmed area outside the pop-up closes it.
-  $("habitSheet").addEventListener("click", e => { if (e.target === $("habitSheet")) $("habitSheet").close(); });
+  // Tapping the dimmed area outside a pop-up closes it.
+  for (const id of ["habitSheet", "actionSheet"]) {
+    $(id).addEventListener("click", e => { if (e.target === $(id)) $(id).close(); });
+  }
   $("habitSheet").addEventListener("close", () => { sheetEditing = null; });
+
+  // The "..." menu
+  $("actionClose").addEventListener("click", () => $("actionSheet").close());
+  $("actionSkip").addEventListener("click", handleSkip);
+  $("actionEdit").addEventListener("click", handleActionEdit);
+  $("actionSheet").addEventListener("close", () => { actionTarget = null; });
 </script>
 </body>
 </html>
