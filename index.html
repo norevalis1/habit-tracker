@@ -7,8 +7,18 @@
 <meta name="theme-color" content="#171510" media="(prefers-color-scheme: dark)">
 <title>Habits</title>
 
+<!-- INSTALL AS AN APP: these lines let you add the app to your Home Screen.
+     The manifest names the app and its icon; the apple lines do the same for iPhone. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Habits">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 <!--
-  HABIT TRACKER - STEP 4: COLORS, STREAKS, HISTORY, SKIP A DAY
+  HABIT TRACKER - STEP 5: REMINDERS (push notifications + calendar alarms),
+  on top of step 4 (colors, streaks, History, skip a day) and installing as an app
 
   WHAT THIS FILE DOES
   - Login, sign-up and log out (Supabase)
@@ -316,6 +326,15 @@
   .legend .l-skip { outline: 1.5px dashed var(--faint); outline-offset: -2px; }
   .legend .l-miss { background: var(--fill); box-shadow: inset 0 0 0 0.5px var(--line); }
 
+  .reminder-card { margin-top: 28px; }
+  .reminder-card p { margin: 0 0 12px; }
+  .reminder-card .btn-row { margin-bottom: 4px; }
+  .field input[type="time"] { text-align: right; flex: 1; min-width: 0; }
+  #remindNote { margin: 10px 0 12px; }
+  .install { margin-top: 20px; }
+  .install p { margin: 0 0 12px; }
+  .install .secondary { margin-bottom: 8px; }
+
   /* ---------- BOTTOM TAB BAR (frosted glass) ---------- */
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0;
@@ -468,6 +487,23 @@
     <section class="panel" id="tab-habits" hidden>
       <h1>Habits</h1>
       <div id="habitsView"></div>
+
+      <!-- Push notification settings (hidden until the step 5 database update has been run) -->
+      <div class="group pad reminder-card" id="pushCard" hidden>
+        <h2>Reminders</h2>
+        <p class="muted" id="pushText"></p>
+        <div class="btn-row" id="pushBtns"></div>
+        <div class="error" id="pushError" role="alert"></div>
+      </div>
+
+      <!-- Shown only in a normal browser tab (not once installed). Dismissible. -->
+      <div class="group pad install" id="installCard" hidden>
+        <h2>Add to your Home Screen</h2>
+        <p class="muted" id="installText"></p>
+        <button type="button" class="secondary" id="installBtn" hidden>Install app</button>
+        <button type="button" class="linkbtn" id="installHide">Not now</button>
+      </div>
+
       <div class="group" style="margin-top:28px">
         <div class="field">
           <span class="field-name auto">Signed in as</span>
@@ -526,6 +562,18 @@
           <button type="button" class="linkbtn" id="presetWeekdays">Weekdays</button>
         </div>
       </div>
+      <div class="group pad" id="remindGroup" hidden>
+        <div class="field-label" id="remindLabel">Reminder</div>
+        <div class="group" style="background:var(--fill);border:0">
+          <div class="field">
+            <label class="field-name auto" for="remindTime">Time</label>
+            <input id="remindTime" type="time" aria-describedby="remindNote">
+            <button type="button" class="linkbtn" id="remindClear" hidden>Remove</button>
+          </div>
+        </div>
+        <p class="footnote" id="remindNote">Leave empty for no reminder. With notifications on (Habits tab) you get a nudge at this time on your days, unless you already checked it off. &ldquo;Add to Calendar&rdquo; saves a repeating alarm in your phone's Calendar app instead.</p>
+        <button type="button" class="secondary" id="calBtn" disabled>Add to Calendar</button>
+      </div>
       <div class="error" id="sheetError" role="alert"></div>
       <button type="button" class="danger" id="sheetArchive" hidden>Archive habit</button>
     </div>
@@ -563,6 +611,10 @@
   // ======================================================================
   const SUPABASE_URL = "https://ujmcxqopymupiwakwfdb.supabase.co";
   const SUPABASE_KEY = "sb_publishable_BRYsZUKxHwL43t36mRF0nA_YF-6rMsQ";
+
+  // This is the PUBLIC half of the key pair that lets our server send you push
+  // notifications. It is safe to show. (The private half lives only in Supabase.)
+  const VAPID_PUBLIC_KEY = "BH0OgrwbANK8lLiUzynL7nRr4cOmrSY8OWMyiH5JRIL5DRFasYwH77T16EOvGoy82IJoNlJp44LmqL7yjOWtq1U";
 
   // Shortcut: find an element on the page by its id
   const $ = id => document.getElementById(id);
@@ -609,7 +661,9 @@
     marks: new Map(),       // what you did each day: "habitId|2026-10-08" -> "done" or "skipped"
     loading: false,         // true while we fetch from the database
     loadError: false,       // true if fetching failed
-    hasColor: true,         // false if the database doesn't have the color column yet
+    hasColor: true,         // false if the database doesn't have the color column yet (step 4 SQL)
+    hasReminders: true,     // false if the database doesn't have the reminder columns yet (step 5 SQL)
+    cols: "id,name,days,created_at,color,remind_time", // the habit columns we managed to load
     viewMode: "today",      // which day the Today tab shows: "today" or "yesterday"
     historyHabitId: null,   // which habit the History tab is showing
     historyMonth: null      // which month the History calendar is showing (null = this month)
@@ -663,6 +717,13 @@
     if (key === "0,6") return "Weekends";
     return sorted.map(i => DAY_SHORT[i]).join(", ");
   }
+
+  // "08:00:00" -> "8:00 AM" (in the phone's own 12/24-hour style)
+  function fmtTime(t) {
+    const [h, m] = String(t).split(":").map(Number);
+    return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  const nowHHMM = () => { const n = new Date(); return pad(n.getHours()) + ":" + pad(n.getMinutes()); };
 
   // ======================================================================
   // 4. HABIT COLORS
@@ -892,6 +953,7 @@
 
   async function logOut() {
     $("logoutBtn").disabled = true;
+    await removePushOnThisDevice();   // so the next person on this phone doesn't get your reminders
     try { await db.auth.signOut(); } catch (e) { /* the listener below still handles it */ }
     $("logoutBtn").disabled = false;
   }
@@ -927,16 +989,19 @@
     try {
       const since = ymd(addDays(todayNoon(), -WINDOW_DAYS));
 
-      // Ask for the habits. If the database doesn't have the "color" column
-      // yet (you haven't run step4.sql), ask again without it so the app
-      // still works. Habit colors then stay automatic.
-      let hasColor = true;
-      let habitsRes = await db.from("habits").select("id,name,days,created_at,color")
-        .eq("archived", false).order("created_at", { ascending: true });
-      if (habitsRes.error && /color/i.test(habitsRes.error.message || "")) {
-        hasColor = false;
-        habitsRes = await db.from("habits").select("id,name,days,created_at")
-          .eq("archived", false).order("created_at", { ascending: true });
+      // Ask for the habits. Newer features need newer database columns. If you
+      // haven't run the matching SQL yet, ask again for fewer columns so the
+      // app still works (colors stay automatic, reminders stay hidden).
+      const COLSETS = [
+        { cols: "id,name,days,created_at,color,remind_time", color: true,  reminders: true },
+        { cols: "id,name,days,created_at,color",             color: true,  reminders: false },
+        { cols: "id,name,days,created_at",                   color: false, reminders: false }
+      ];
+      let habitsRes, chosen = COLSETS[COLSETS.length - 1];
+      for (const set of COLSETS) {
+        habitsRes = await db.from("habits").select(set.cols).eq("archived", false).order("created_at", { ascending: true });
+        if (!habitsRes.error) { chosen = set; break; }
+        if (!/color|remind_time/i.test(habitsRes.error.message || "")) break; // a different problem: stop
       }
       if (habitsRes.error) throw habitsRes.error;
 
@@ -947,7 +1012,9 @@
       );
       if (!user) return; // logged out while loading: throw the result away
 
-      state.hasColor = hasColor;
+      state.hasColor = chosen.color;
+      state.hasReminders = chosen.reminders;
+      state.cols = chosen.cols;
       state.habits = habitsRes.data || [];
       state.marks = new Map(checks.map(r => [r.habit_id + "|" + r.day, r.status]));
       state.loadError = false;
@@ -956,6 +1023,7 @@
     } finally {
       state.loading = false;
       renderAll();
+      refreshPushSubscription();   // keep your time zone up to date for reminders
     }
   }
 
@@ -966,6 +1034,8 @@
     state.loading = false;
     state.loadError = false;
     state.hasColor = true;
+    state.hasReminders = true;
+    state.cols = "id,name,days,created_at,color,remind_time";
     state.viewMode = "today";
     state.historyHabitId = null;
     state.historyMonth = null;
@@ -1124,7 +1194,7 @@
           el("span", { class: "dot-hc", "aria-hidden": "true" }),
           el("span", { class: "stack" },
             el("span", { class: "label", text: habit.name }),
-            el("span", { class: "sched", text: scheduleText(habit.days || []) })
+            el("span", { class: "sched", text: scheduleText(habit.days || []) + (habit.remind_time ? " \u00B7 " + fmtTime(habit.remind_time) : "") })
           )
         ),
         chevron
@@ -1316,6 +1386,9 @@
     sheetDays = new Set(habit ? habit.days : [0, 1, 2, 3, 4, 5, 6]);
     sheetColor = habit ? colorIndex(habit) : nextFreeColor();
     $("colorGroup").hidden = !state.hasColor;
+    $("remindGroup").hidden = !state.hasReminders;
+    $("remindTime").value = habit && habit.remind_time ? String(habit.remind_time).slice(0, 5) : "";
+    updateRemindUi();
     renderDayChips();
     renderSwatches();
     $("sheetError").textContent = "";
@@ -1371,6 +1444,14 @@
 
     const fields = { name, days };
     if (state.hasColor) fields.color = sheetColor;
+    if (state.hasReminders) {
+      const rt = $("remindTime").value || null;                       // "08:00" or nothing
+      const before = editing && editing.remind_time ? String(editing.remind_time).slice(0, 5) : null;
+      fields.remind_time = rt;
+      // If you set a time that already passed today, start reminding tomorrow
+      // (otherwise you'd get a reminder the moment you save).
+      if (rt !== before) fields.last_reminded = rt && rt <= nowHHMM() ? ymd(todayNoon()) : null;
+    }
 
     $("sheetError").textContent = "";
     $("sheetSave").disabled = true;
@@ -1382,7 +1463,7 @@
       } else {
         // The database fills in the id and your user id automatically.
         const { data, error } = await db.from("habits")
-          .insert(fields).select(state.hasColor ? "id,name,days,created_at,color" : "id,name,days,created_at").single();
+          .insert(fields).select(state.cols).single();
         if (error) throw error;
         state.habits.push(data);
       }
@@ -1510,6 +1591,242 @@
   $("actionSkip").addEventListener("click", handleSkip);
   $("actionEdit").addEventListener("click", handleActionEdit);
   $("actionSheet").addEventListener("close", () => { actionTarget = null; });
+  // ======================================================================
+  // 17. REMINDERS
+  // Two ways to be reminded, and you can use either or both:
+  //  A) CALENDAR: download a repeating alarm into your phone's Calendar app.
+  //  B) PUSH NOTIFICATIONS: our server sends a message at the time you chose,
+  //     even when the app is closed. This needs the app installed on your
+  //     Home Screen (on iPhone) and notifications switched on below.
+  // ======================================================================
+
+  // --- The reminder part of the add/edit pop-up ---
+  function updateRemindUi() {
+    const hasTime = !!$("remindTime").value;
+    $("remindClear").hidden = !hasTime;
+    $("calBtn").disabled = !hasTime;
+  }
+  $("remindTime").addEventListener("input", updateRemindUi);
+  $("remindClear").addEventListener("click", () => { $("remindTime").value = ""; updateRemindUi(); });
+
+  // --- A) Calendar alarm: build a small ".ics" file and hand it to the phone ---
+  const icsText = t => String(t).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  function buildIcs(name, days, hhmm) {
+    const [H, M] = hhmm.split(":").map(Number);
+    const now = new Date();
+    // The first reminder: today if it's a scheduled day and the time hasn't passed, else the next scheduled day.
+    let first = todayNoon();
+    for (let i = 0; i < 8; i++) {
+      const c = addDays(todayNoon(), i);
+      if (days.includes(c.getDay()) && (i > 0 || H * 60 + M > now.getHours() * 60 + now.getMinutes())) { first = c; break; }
+    }
+    const start = ymd(first).replace(/-/g, "") + "T" + pad(H) + pad(M) + "00";   // no "Z": it's the phone's local time
+    const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+    const byday = [...days].sort((a, b) => a - b).map(i => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][i]).join(",");
+    return [
+      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Habits//EN", "CALSCALE:GREGORIAN",
+      "BEGIN:VEVENT",
+      "UID:" + (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) + "@habits",
+      "DTSTAMP:" + stamp, "DTSTART:" + start, "DURATION:PT15M",
+      "RRULE:FREQ=WEEKLY;BYDAY=" + byday,
+      "SUMMARY:" + icsText(name),
+      "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + icsText(name), "TRIGGER:PT0M", "END:VALARM",
+      "END:VEVENT", "END:VCALENDAR"
+    ].join("\r\n") + "\r\n";
+  }
+  function addToCalendar() {
+    const name = $("habitName").value.trim();
+    const hhmm = $("remindTime").value;
+    if (!name) { $("sheetError").textContent = "Give your habit a name first."; return; }
+    if (sheetDays.size === 0) { $("sheetError").textContent = "Pick at least one day first."; return; }
+    if (!hhmm) return;
+    $("sheetError").textContent = "";
+    const blob = new Blob([buildIcs(name, [...sheetDays], hhmm)], { type: "text/calendar" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "habit-reminder.ics" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    showToast("Open the downloaded file to add it to your Calendar.");
+  }
+  $("calBtn").addEventListener("click", addToCalendar);
+
+  // --- B) Push notifications ---
+  const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const timeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (e) { return "UTC"; } };
+  function keyToBytes(b64url) {
+    const raw = atob(b64url.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64url.length % 4)) % 4));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  }
+  async function currentSub() {
+    if (!pushSupported()) return null;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      return reg ? await reg.pushManager.getSubscription() : null;
+    } catch (e) { return null; }
+  }
+
+  // Tell the database about this phone (and its time zone, so reminders fire at YOUR local time).
+  async function saveSub(sub) {
+    const j = sub.toJSON();
+    const { error } = await db.from("push_subscriptions").upsert({
+      endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+      tz: timeZone(), updated_at: new Date().toISOString()
+    }, { onConflict: "endpoint" });
+    if (error) throw error;
+  }
+  // Quietly keep the time zone fresh (travel!) each time the app opens.
+  async function refreshPushSubscription() {
+    if (!user || !state.hasReminders || !pushSupported() || Notification.permission !== "granted") { renderPushCard(); return; }
+    const sub = await currentSub();
+    if (sub) { try { await saveSub(sub); } catch (e) { /* not important */ } }
+    renderPushCard();
+  }
+
+  let pushBusy = false;
+  async function renderPushCard() {
+    const card = $("pushCard");
+    card.hidden = !state.hasReminders;
+    if (!state.hasReminders) return;
+
+    const sub = await currentSub();
+    const perm = pushSupported() ? Notification.permission : "unsupported";
+    const buttons = [];
+    let text;
+    const btn = (label, cls, fn) => el("button", { type: "button", class: cls, text: label, disabled: pushBusy, onclick: fn });
+
+    if (perm === "unsupported") {
+      text = isIOS() && !isStandalone()
+        ? "On iPhone, push notifications work once Habits is on your Home Screen. Add it (steps below), open it from there, and come back here."
+        : "This browser can't send push notifications. You can still add repeating alarms to your Calendar when you edit a habit.";
+    } else if (perm === "denied") {
+      text = "Notifications are blocked for Habits. Turn them on in your phone's Settings, then come back here.";
+    } else if (sub && perm === "granted") {
+      text = "Push notifications are on for this device. Set a reminder time on any habit and you'll get a nudge on its days.";
+      buttons.push(btn("Send a test", "secondary", testPush), btn("Turn off", "danger", disablePush));
+    } else {
+      text = "Get a nudge at the time you pick for each habit, even when the app is closed. Set the time when you edit a habit.";
+      buttons.push(btn("Turn on notifications", "primary", enablePush));
+    }
+    $("pushText").textContent = text;
+    $("pushBtns").replaceChildren(...buttons);
+  }
+
+  async function runPush(fn) {
+    if (pushBusy) return;
+    pushBusy = true; $("pushError").textContent = "";
+    await renderPushCard();
+    try { await fn(); } catch (e) { $("pushError").textContent = pushError(e); }
+    pushBusy = false;
+    await renderPushCard();
+  }
+  function pushError(e) {
+    const msg = String((e && e.message) || "");
+    if (/push_subscriptions|schema cache|relation/i.test(msg)) return "The database isn't ready for reminders yet. Run the step 5 database update first.";
+    if (e && e.name === "NotAllowedError") return "Notifications were not allowed. You can change that in your phone's Settings.";
+    return "Couldn't turn that on. Check your connection and try again.";
+  }
+
+  function enablePush() {
+    return runPush(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) throw new Error("The app isn't ready yet. Refresh the page and try again.");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
+      try {
+        await saveSub(sub);
+      } catch (e) {
+        // This phone may still be registered under someone else's account. Start fresh once.
+        await sub.unsubscribe();
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
+        await saveSub(sub);
+      }
+      showToast("Notifications are on. Tap \u201CSend a test\u201D to check.");
+    });
+  }
+
+  function disablePush() {
+    return runPush(async () => {
+      const sub = await currentSub();
+      if (sub) {
+        await db.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      }
+    });
+  }
+
+  function testPush() {
+    return runPush(async () => {
+      const { data, error } = await db.functions.invoke("send-reminders", { body: { test: true } });
+      if (error) {
+        const status = error.context && error.context.status;
+        $("pushError").textContent = status === 404 || /not found|failed to send/i.test(error.message || "")
+          ? "The reminder service isn't set up yet. Follow the setup steps for the \u201Csend-reminders\u201D function."
+          : "The test didn't go through. Try again in a moment.";
+        return;
+      }
+      if (!data || !data.sent) { $("pushError").textContent = "No device received it. Try turning notifications off and on again."; return; }
+      showToast("Test sent. It should arrive in a few seconds.");
+    });
+  }
+
+  // On logout, stop this phone from receiving YOUR reminders.
+  async function removePushOnThisDevice() {
+    try {
+      const sub = await currentSub();
+      if (!sub) return;
+      await db.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+      await sub.unsubscribe();
+    } catch (e) { /* logging out matters more */ }
+  }
+
+
+  // ======================================================================
+  // 16. INSTALLING AS AN APP
+  // - A service worker (sw.js) saves the app's files so it opens fast and
+  //   still opens with a weak connection.
+  // - A hint card on the Habits tab explains how to add it to the Home Screen.
+  //   Android/Chrome can show a real "Install app" button; iPhone can't, so
+  //   we explain the Share-menu steps instead.
+  // ======================================================================
+  const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  const hintHidden = () => { try { return localStorage.getItem("hideInstallHint") === "1"; } catch (e) { return false; } };
+  let installEvent = null;
+
+  function updateInstallCard() {
+    const show = !isStandalone() && !hintHidden();
+    $("installCard").hidden = !show;
+    if (!show) return;
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    $("installBtn").hidden = !installEvent;
+    $("installText").textContent = installEvent
+      ? "Open Habits like any other app, full screen from your Home Screen."
+      : ios
+        ? "In Safari, tap the Share button, then \u201CAdd to Home Screen\u201D. Habits will open like any other app."
+        : "In your browser menu, choose \u201CAdd to Home Screen\u201D or \u201CInstall app\u201D.";
+  }
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; updateInstallCard(); });
+  window.addEventListener("appinstalled", () => { installEvent = null; updateInstallCard(); });
+  $("installBtn").addEventListener("click", async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    try { await installEvent.userChoice; } catch (e) { /* ignore */ }
+    installEvent = null;
+    updateInstallCard();
+  });
+  $("installHide").addEventListener("click", () => {
+    try { localStorage.setItem("hideInstallHint", "1"); } catch (e) { /* ignore */ }
+    updateInstallCard();
+  });
+  updateInstallCard();
+  renderPushCard();
+
+  // Register the service worker (only works on the real https site, not on a local file).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => { /* app still works without it */ }); });
+  }
 </script>
 </body>
 </html>
