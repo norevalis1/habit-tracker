@@ -7,6 +7,18 @@
 <meta name="theme-color" content="#171510" media="(prefers-color-scheme: dark)">
 <title>Habits</title>
 
+<!-- SECURITY: tells the browser exactly which places this page may load code from or talk to.
+     Even if an attacker managed to sneak in a script tag, the browser would refuse to run
+     code from anywhere else or send your data to any other website. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+  // SECURITY: refuse to run inside someone else's page (stops "clickjacking").
+  // GitHub Pages can't send the header that normally does this, so we do it here.
+  if (window.top !== window.self) { try { window.top.location = window.self.location; } catch (e) { document.documentElement.style.display = "none"; } }
+</script>
+
+
 <!-- INSTALL AS AN APP: these lines let you add the app to your Home Screen.
      The manifest names the app and its icon; the apple lines do the same for iPhone. -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,8 +29,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
 <!--
-  HABIT TRACKER - STEP 5: REMINDERS (push notifications + calendar alarms),
-  on top of step 4 (colors, streaks, History, skip a day) and installing as an app
+  HABIT TRACKER - STEP 6: WEEKLY GOALS, NOTES, REORDER, EXPORT,
+  on top of step 5 (reminders), step 4 (colors, streaks, History, skip a day) and installing as an app
 
   WHAT THIS FILE DOES
   - Login, sign-up and log out (Supabase)
@@ -326,6 +338,35 @@
   .legend .l-skip { outline: 1.5px dashed var(--faint); outline-offset: -2px; }
   .legend .l-miss { background: var(--fill); box-shadow: inset 0 0 0 0.5px var(--line); }
 
+  /* Step 6: weekly goals, notes, reorder */
+  .modeseg { margin: 0 0 14px; }
+  .times { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  textarea {
+    width: 100%; font: inherit; color: var(--ink); background: var(--fill); border: 0;
+    border-radius: 10px; padding: 10px 12px; resize: vertical; min-height: 76px;
+  }
+  textarea::placeholder { color: var(--muted); }
+  .note-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+  .note-foot .footnote { margin: 0; }
+  .habit-row .note-line { font-size: 0.8125rem; font-weight: 400; color: var(--muted); font-style: italic;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cell.open { background: transparent; }
+  .cell.has-note::before {
+    content: ""; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px;
+    border-radius: 50%; background: currentColor; opacity: 0.75;
+  }
+  .note-row { display: block; width: 100%; text-align: left; background: transparent; border-radius: 0;
+    min-height: 52px; padding: 8px 16px; font-weight: 400; border-top: 0.5px solid var(--line); }
+  .note-row:first-child { border-top: 0; }
+  .note-row small { display: block; color: var(--muted); font-size: 0.8125rem; font-weight: 500; }
+  .note-row span { display: block; overflow-wrap: anywhere; }
+  .list-head { display: flex; justify-content: space-between; align-items: center; margin: 18px 4px 8px; }
+  .list-head h2 { margin: 0; font-size: 0.9375rem; color: var(--muted); font-weight: 600; }
+  .reorder-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; min-height: 58px; position: relative; }
+  .reorder-row + .reorder-row { border-top: 0.5px solid var(--line); }
+  .reorder-row .lead { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
+  .reorder-row .dot-hc { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); flex: none; }
+  .mv { width: 44px; min-height: 44px; padding: 0; border-radius: 10px; background: var(--fill); color: var(--tint); font-size: 1.125rem; }
   .reminder-card { margin-top: 28px; }
   .reminder-card p { margin: 0 0 12px; }
   .reminder-card .btn-row { margin-bottom: 4px; }
@@ -504,6 +545,11 @@
         <button type="button" class="linkbtn" id="installHide">Not now</button>
       </div>
 
+      <div class="group" style="margin-top:20px">
+        <button class="row-action tint" type="button" id="exportBtn">Export my history (CSV)</button>
+      </div>
+      <p class="footnote" id="exportNote">A spreadsheet of every check-in and note. It's your data.</p>
+
       <div class="group" style="margin-top:28px">
         <div class="field">
           <span class="field-name auto">Signed in as</span>
@@ -554,12 +600,23 @@
         <div class="field-label" id="colorLabel">Color</div>
         <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="colorLabel"></div>
       </div>
-      <div class="group pad">
-        <div class="field-label" id="daysLabel">Repeat on</div>
-        <div class="days" id="days" role="group" aria-labelledby="daysLabel"></div>
-        <div class="presets">
-          <button type="button" class="linkbtn" id="presetEvery">Every day</button>
-          <button type="button" class="linkbtn" id="presetWeekdays">Weekdays</button>
+      <div class="group pad" id="repeatGroup">
+        <div class="field-label" id="daysLabel">Repeat</div>
+        <div class="seg modeseg" id="modeSeg" role="group" aria-label="How often" hidden>
+          <button type="button" id="modeDays" aria-pressed="true">Specific days</button>
+          <button type="button" id="modeWeekly" aria-pressed="false">Times a week</button>
+        </div>
+        <div id="daysPane">
+          <div class="days" id="days" role="group" aria-labelledby="daysLabel"></div>
+          <div class="presets">
+            <button type="button" class="linkbtn" id="presetEvery">Every day</button>
+            <button type="button" class="linkbtn" id="presetWeekdays">Weekdays</button>
+          </div>
+        </div>
+        <div id="weeklyPane" hidden>
+          <div class="field-label" id="timesLabel">How many times a week?</div>
+          <div class="times" id="times" role="radiogroup" aria-labelledby="timesLabel"></div>
+          <p class="footnote" style="margin:10px 0 0">Do it on any days you like. Weeks start on Monday. A skipped day lowers the goal for that week.</p>
         </div>
       </div>
       <div class="group pad" id="remindGroup" hidden>
@@ -594,6 +651,14 @@
       <button type="button" class="row-action tint" id="actionEdit">Edit habit</button>
     </div>
     <p class="footnote" style="margin:0 4px">Skipped days never break your streak. Use them for sick days or travel.</p>
+    <div class="group pad" id="noteGroup">
+      <label class="field-label" for="noteInput">Note for this day</label>
+      <textarea id="noteInput" maxlength="200" rows="3" placeholder="How did it go?"></textarea>
+      <div class="note-foot">
+        <span class="footnote" id="noteHint"></span>
+        <button type="button" class="linkbtn" id="noteSave">Save note</button>
+      </div>
+    </div>
   </div>
 </dialog>
 
@@ -663,6 +728,10 @@
     loadError: false,       // true if fetching failed
     hasColor: true,         // false if the database doesn't have the color column yet (step 4 SQL)
     hasReminders: true,     // false if the database doesn't have the reminder columns yet (step 5 SQL)
+    hasWeekly: true,        // false if the database doesn't have target_per_week yet (step 6 SQL)
+    hasOrder: true,         // false if the database doesn't have sort_order yet (step 6 SQL)
+    notes: new Map(),       // notes on days: "habitId|2026-10-08" -> "felt great"
+    reordering: false,      // true while the Habits tab is in "Reorder" mode
     cols: "id,name,days,created_at,color,remind_time", // the habit columns we managed to load
     viewMode: "today",      // which day the Today tab shows: "today" or "yesterday"
     historyHabitId: null,   // which habit the History tab is showing
@@ -671,6 +740,8 @@
   let sheetEditing = null;      // the habit being edited in the pop-up (null = adding a new one)
   let sheetDays = new Set();    // the weekdays picked in the pop-up (0 = Sunday ... 6 = Saturday)
   let sheetColor = 0;           // the color picked in the pop-up (0-7)
+  let sheetMode = "days";       // the pop-up's repeat type: "days" or "weekly"
+  let sheetTimes = 3;           // the weekly goal picked in the pop-up (1-6)
   let actionTarget = null;      // the habit and day the "..." menu is open for
   let pendingOps = 0;           // how many saves are still in flight
   const queues = new Map();     // keeps saves for the same habit-and-day in order
@@ -716,6 +787,33 @@
     if (key === "1,2,3,4,5") return "Weekdays";
     if (key === "0,6") return "Weekends";
     return sorted.map(i => DAY_SHORT[i]).join(", ");
+  }
+
+  // ---------- "X times a week" habits ----------
+  // These habits show up every day. You choose which days to do them, and the
+  // goal is how many times per week (weeks start on Monday).
+  const isWeekly = h => Number.isInteger(h.target_per_week) && h.target_per_week > 0;
+  const habitSchedText = h => isWeekly(h)
+    ? (h.target_per_week === 1 ? "Once a week" : h.target_per_week + " times a week")
+    : scheduleText(h.days || []);
+  function weekStart(d) { const x = noon(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+
+  // How the week containing day "d" stands for a weekly habit.
+  //  - A week before the habit existed doesn't count.
+  //  - A skipped day lowers that week's goal (you can't be penalized for a sick day).
+  function weekProgress(habit, d, startStr) {
+    const start = startStr || habitStartStr(habit);
+    const mon = weekStart(d);
+    let done = 0, skipped = 0, avail = 0;
+    for (let i = 0; i < 7; i++) {
+      const ds = ymd(addDays(mon, i));
+      if (ds < start) continue;
+      avail++;
+      const mark = state.marks.get(habit.id + "|" + ds);
+      if (mark === "done") done++; else if (mark === "skipped") skipped++;
+    }
+    const required = Math.max(0, Math.min(habit.target_per_week, avail - skipped));
+    return { done, skipped, required, met: required > 0 && done >= required, mon };
   }
 
   // "08:00:00" -> "8:00 AM" (in the phone's own 12/24-hour style)
@@ -764,7 +862,29 @@
     return created;
   }
 
+  // Weekly habits count WEEKS in a row where the goal was met.
+  // The current week never breaks the streak while it is still in progress.
+  function weeklyStreak(habit) {
+    const today = todayNoon();
+    const start = habitStartStr(habit);
+    const curMon = ymd(weekStart(today));
+    const windowStart = ymd(addDays(weekStart(today), -49));   // the last 8 weeks
+    let run = 0, best = 0, total = 0, hit = 0, missed = 0;
+    for (let mon = weekStart(parseYmd(start)); ymd(mon) <= curMon; mon = addDays(mon, 7)) {
+      const wp = weekProgress(habit, mon, start);
+      total += wp.done;
+      const inWindow = ymd(mon) >= windowStart;
+      if (wp.required === 0) continue;                 // a fully skipped week: neutral
+      if (wp.met) { run++; best = Math.max(best, run); if (inWindow) hit++; }
+      else if (ymd(mon) === curMon) { /* still in progress */ }
+      else { run = 0; if (inWindow) missed++; }
+    }
+    const counted = hit + missed;
+    return { current: run, best, total, rate: counted ? Math.round((hit / counted) * 100) : null, unit: "weeks", window: "Last 8 weeks" };
+  }
+
   function streakInfo(habit) {
+    if (isWeekly(habit)) return weeklyStreak(habit);
     const today = todayNoon();
     const todayStr = ymd(today);
     const thirtyAgo = ymd(addDays(today, -29));
@@ -792,7 +912,7 @@
       }
     }
     const counted = doneRecent + missedRecent;
-    return { current: run, best, total, rate: counted ? Math.round((doneRecent / counted) * 100) : null };
+    return { current: run, best, total, rate: counted ? Math.round((doneRecent / counted) * 100) : null, unit: "days", window: "Last 30 days" };
   }
 
   // ======================================================================
@@ -865,6 +985,10 @@
       return "This app can't send emails to that address yet. Try again later.";
     if (code === "weak_password" || (msg.includes("password") && msg.includes("least")))
       return "Choose a stronger password with at least 8 characters.";
+    if (msg.startsWith("limit reached"))
+      return (err.message || "").slice(0, 100);   // our own plain-English limit message
+    if (msg.includes("outside the allowed range"))
+      return "That date is too far from today.";
     if (msg.includes("fetch") || msg.includes("network"))
       return "Can't reach the server. Check your connection and try again.";
     return "Something went wrong. Try again in a moment.";
@@ -990,33 +1114,38 @@
       const since = ymd(addDays(todayNoon(), -WINDOW_DAYS));
 
       // Ask for the habits. Newer features need newer database columns. If you
-      // haven't run the matching SQL yet, ask again for fewer columns so the
-      // app still works (colors stay automatic, reminders stay hidden).
-      const COLSETS = [
-        { cols: "id,name,days,created_at,color,remind_time", color: true,  reminders: true },
-        { cols: "id,name,days,created_at,color",             color: true,  reminders: false },
-        { cols: "id,name,days,created_at",                   color: false, reminders: false }
-      ];
-      let habitsRes, chosen = COLSETS[COLSETS.length - 1];
-      for (const set of COLSETS) {
-        habitsRes = await db.from("habits").select(set.cols).eq("archived", false).order("created_at", { ascending: true });
-        if (!habitsRes.error) { chosen = set; break; }
-        if (!/color|remind_time/i.test(habitsRes.error.message || "")) break; // a different problem: stop
+      // haven't run the matching SQL yet, we drop the missing column and ask
+      // again, so the app still works (that feature just stays hidden).
+      const OPTIONAL = ["color", "remind_time", "target_per_week", "sort_order"];
+      let have = [...OPTIONAL], habitsRes = null, usedCols = "";
+      for (let attempt = 0; attempt <= OPTIONAL.length; attempt++) {
+        usedCols = ["id", "name", "days", "created_at", ...have].join(",");
+        let query = db.from("habits").select(usedCols).eq("archived", false);
+        if (have.includes("sort_order")) query = query.order("sort_order", { ascending: true });
+        habitsRes = await query.order("created_at", { ascending: true });
+        if (!habitsRes.error) break;
+        const msg = habitsRes.error.message || "";
+        const missing = have.filter(c => msg.includes(c));
+        if (!missing.length) break;                       // a different problem: stop
+        have = have.filter(c => !missing.includes(c));
       }
       if (habitsRes.error) throw habitsRes.error;
 
       // Row Level Security makes the database return ONLY your rows.
       const checks = await fetchAllPages(() =>
-        db.from("check_ins").select("habit_id,day,status").gte("day", since)
+        db.from("check_ins").select("habit_id,day,status,note").gte("day", since)
           .order("day", { ascending: true }).order("habit_id", { ascending: true })
       );
       if (!user) return; // logged out while loading: throw the result away
 
-      state.hasColor = chosen.color;
-      state.hasReminders = chosen.reminders;
-      state.cols = chosen.cols;
+      state.hasColor = have.includes("color");
+      state.hasReminders = have.includes("remind_time");
+      state.hasWeekly = have.includes("target_per_week");
+      state.hasOrder = have.includes("sort_order");
+      state.cols = usedCols;
       state.habits = habitsRes.data || [];
       state.marks = new Map(checks.map(r => [r.habit_id + "|" + r.day, r.status]));
+      state.notes = new Map(checks.filter(r => r.note).map(r => [r.habit_id + "|" + r.day, r.note]));
       state.loadError = false;
     } catch (err) {
       if (!silent) state.loadError = true;
@@ -1035,6 +1164,10 @@
     state.loadError = false;
     state.hasColor = true;
     state.hasReminders = true;
+    state.hasWeekly = true;
+    state.hasOrder = true;
+    state.notes = new Map();
+    state.reordering = false;
     state.cols = "id,name,days,created_at,color,remind_time";
     state.viewMode = "today";
     state.historyHabitId = null;
@@ -1108,7 +1241,8 @@
     }
 
     const markOf = h => state.marks.get(h.id + "|" + day);
-    const active = scheduled.filter(h => markOf(h) !== "skipped");   // skipped habits don't count
+    // Skipped habits don't count, and neither does a weekly habit whose goal is already met.
+    const active = scheduled.filter(h => markOf(h) !== "skipped" && !(isWeekly(h) && markOf(h) !== "done" && weekProgress(h, date).met));
     const doneCount = active.filter(h => markOf(h) === "done").length;
     const allDone = active.length > 0 && doneCount === active.length;
 
@@ -1131,8 +1265,18 @@
     for (const habit of scheduled) {
       const key = habit.id + "|" + day;
       const mark = markOf(habit);
-      const streak = streakInfo(habit).current;
-      const sub = mark === "skipped" ? "Skipped" : streak >= 2 ? streak + "-day streak" : "";
+      const info = streakInfo(habit);
+      const parts = [];
+      if (mark === "skipped") parts.push("Skipped");
+      if (isWeekly(habit)) {
+        const wp = weekProgress(habit, date);
+        parts.push(wp.done + " of " + (wp.required || habit.target_per_week) + " this week" + (wp.met ? " \u00B7 goal met" : ""));
+        if (info.current >= 2) parts.push(info.current + "-week streak");
+      } else if (mark !== "skipped" && info.current >= 2) {
+        parts.push(info.current + "-day streak");
+      }
+      const sub = parts.join(" \u00B7 ");
+      const note = state.notes.get(key) || "";
 
       const circle = el("span", { class: "circle" });
       circle.innerHTML = CHECK_SVG; // fixed drawing, not user text, so this is safe
@@ -1142,7 +1286,8 @@
         onclick: () => toggleDone(habit, day)
       }, circle, el("span", { class: "stack" },
         el("span", { class: "label", text: habit.name }),
-        ...(sub ? [el("span", { class: "sub", text: sub })] : [])
+        ...(sub ? [el("span", { class: "sub", text: sub })] : []),
+        ...(note ? [el("span", { class: "note-line", text: note })] : [])
       ));
       const more = el("button", {
         type: "button", class: "more-btn", "aria-label": "More options for " + habit.name,
@@ -1182,26 +1327,41 @@
     }
 
     const list = el("div", { class: "group" });
-    for (const habit of state.habits) {
+    state.habits.forEach((habit, index) => {
+      const sched = habitSchedText(habit) + (habit.remind_time ? " \u00B7 " + fmtTime(habit.remind_time) : "");
+      const stack = el("span", { class: "stack" },
+        el("span", { class: "label", text: habit.name }),
+        el("span", { class: "sched", text: sched })
+      );
+      if (state.reordering) {
+        // Reorder mode: up and down buttons (reliable on a phone, no dragging needed).
+        const up = el("button", { type: "button", class: "mv", text: "\u25B2", "aria-label": "Move " + habit.name + " up", "data-habit": habit.id, "data-dir": "-1", onclick: () => moveHabit(index, -1) });
+        const down = el("button", { type: "button", class: "mv", text: "\u25BC", "aria-label": "Move " + habit.name + " down", "data-habit": habit.id, "data-dir": "1", onclick: () => moveHabit(index, 1) });
+        up.disabled = index === 0;
+        down.disabled = index === state.habits.length - 1;
+        list.append(el("div", { class: "reorder-row", style: "--hc:" + colorVar(habit) },
+          el("span", { class: "lead" }, el("span", { class: "dot-hc", "aria-hidden": "true" }), stack), up, down));
+        return;
+      }
       const chevron = el("span", { class: "chev" });
       chevron.innerHTML = CHEVRON_SVG;
       list.append(el("button", {
         type: "button", class: "habit-row edit", "aria-label": "Edit " + habit.name,
         style: "--hc:" + colorVar(habit),
         onclick: () => openSheet({ habit })
-      },
-        el("span", { class: "lead" },
-          el("span", { class: "dot-hc", "aria-hidden": "true" }),
-          el("span", { class: "stack" },
-            el("span", { class: "label", text: habit.name }),
-            el("span", { class: "sched", text: scheduleText(habit.days || []) + (habit.remind_time ? " \u00B7 " + fmtTime(habit.remind_time) : "") })
-          )
-        ),
-        chevron
-      ));
-    }
+      }, el("span", { class: "lead" }, el("span", { class: "dot-hc", "aria-hidden": "true" }), stack), chevron));
+    });
     box.append(el("button", { type: "button", class: "primary", text: "Add habit", onclick: () => openSheet() }));
-    box.append(el("div", { class: "after-list" }, list));
+    if (state.hasOrder && state.habits.length > 1) {
+      box.append(el("div", { class: "list-head" },
+        el("h2", { text: state.reordering ? "Use the arrows to reorder" : "Your habits" }),
+        el("button", { type: "button", class: "linkbtn", text: state.reordering ? "Done" : "Reorder",
+          onclick: () => { state.reordering = !state.reordering; renderHabitsTab(); } })
+      ));
+      box.append(list);
+    } else {
+      box.append(el("div", { class: "after-list" }, list));
+    }
   }
 
   // The History tab: pick a habit, see its stats, and see a month calendar.
@@ -1233,11 +1393,12 @@
 
     // 2. Stats
     const info = streakInfo(habit);
-    const days = n => el("b", {}, String(n), el("small", { text: n === 1 ? " day" : " days" }));
+    const unit = info.unit || "days";
+    const days = n => el("b", {}, String(n), el("small", { text: " " + (n === 1 ? unit.slice(0, -1) : unit) }));
     box.append(el("div", { class: "group stats" },
       el("div", { class: "stat" }, days(info.current), el("span", { text: "Current streak" })),
       el("div", { class: "stat" }, days(info.best), el("span", { text: "Best streak" })),
-      el("div", { class: "stat" }, el("b", { text: info.rate === null ? "–" : info.rate + "%" }), el("span", { text: "Last 30 days" })),
+      el("div", { class: "stat" }, el("b", { text: info.rate === null ? "–" : info.rate + "%" }), el("span", { text: info.window || "Last 30 days" })),
       el("div", { class: "stat" }, el("b", { text: String(info.total) }), el("span", { text: "Total done" }))
     ));
 
@@ -1268,12 +1429,14 @@
       let cls = "cell", clickable = false, what = "";
       if (ds > todayStr) cls += " future";
       else if (ds < startStr) cls += " before";
-      else if (!isScheduled(habit, d)) { cls += " rest"; what = "rest day"; }
+      else if (!isScheduled(habit, d) && !isWeekly(habit)) { cls += " rest"; what = "rest day"; }
       else if (mark === "done") { cls += " done"; clickable = true; what = "done"; }
       else if (mark === "skipped") { cls += " skipped"; clickable = true; what = "skipped"; }
       else if (ds === todayStr) { cls += " pending"; clickable = true; what = "not done yet"; }
+      else if (isWeekly(habit)) { cls += " open"; clickable = true; what = "not done"; }
       else { cls += " missed"; clickable = true; what = "missed"; }
       if (ds === todayStr) cls += " today";
+      if (state.notes.has(habit.id + "|" + ds)) { cls += " has-note"; what += (what ? ", " : "") + "has a note"; }
       const label = longDate(d) + (what ? ": " + what : "");
 
       if (clickable) {
@@ -1293,10 +1456,27 @@
       el("div", { class: "legend", "aria-hidden": "true" },
         el("span", {}, el("i", { class: "l-done" }), "Done"),
         el("span", {}, el("i", { class: "l-skip" }), "Skipped"),
-        el("span", {}, el("i", { class: "l-miss" }), "Missed")
+        ...(isWeekly(habit) ? [] : [el("span", {}, el("i", { class: "l-miss" }), "Missed")]),
+        el("span", {}, "\u2022 Note")
       )
     ));
-    box.append(el("p", { class: "footnote", text: "Tap a day to mark it done or undo it." }));
+    if (isWeekly(habit)) {
+      const wp = weekProgress(habit, today);
+      box.append(el("p", { class: "footnote", text: "This week: " + wp.done + " of " + (wp.required || habit.target_per_week) + (wp.met ? " \u00B7 goal met" : "") + ". Weeks start on Monday." }));
+    }
+    box.append(el("p", { class: "footnote", text: "Tap a day to mark it done or undo it. Add notes from the \u22EF menu on Today, or tap a note below." }));
+
+    // 4. Recent notes for this habit (tap one to edit it)
+    const noted = [...state.notes.keys()].filter(k => k.startsWith(habit.id + "|")).map(k => k.split("|")[1]).sort().reverse().slice(0, 8);
+    if (noted.length) {
+      box.append(el("div", { class: "list-head" }, el("h2", { text: "Notes" })));
+      box.append(el("div", { class: "group" }, ...noted.map(ds =>
+        el("button", { type: "button", class: "note-row", onclick: () => openActions(habit, ds) },
+          el("small", { text: longDate(parseYmd(ds)) }),
+          el("span", { text: state.notes.get(habit.id + "|" + ds) })
+        )
+      )));
+    }
 
     if (focusDay) {
       const cell = grid.querySelector('[data-day="' + focusDay + '"]');
@@ -1310,26 +1490,63 @@
   // background. If saving fails, we say so and reload the true state.
   // status: "done", "skipped", or null (= clear it)
   // ======================================================================
-  function setMark(habit, day, status, opts = {}) {
-    const key = habit.id + "|" + day;
-    if (status) state.marks.set(key, status); else state.marks.delete(key);
-    renderAll(opts);
-
-    // Saves for the same habit and day run one after another, so tapping
-    // fast (check, uncheck, check) always ends in the right state.
+  // Saves that share a key run one after another (so tapping fast always ends
+  // in the right state). If a save fails we say so and reload the true state.
+  function queueWrite(key, task) {
     pendingOps++;
     const previous = queues.get(key) || Promise.resolve();
-    const op = previous.then(async () => {
-      const result = status
-        ? await db.from("check_ins").upsert({ habit_id: habit.id, day, status }, { onConflict: "habit_id,day" })
-        : await db.from("check_ins").delete().eq("habit_id", habit.id).eq("day", day);
-      if (result.error) throw result.error;
-    });
+    const op = previous.then(task);
     queues.set(key, op.catch(() => {}));
     op.catch(() => {
       showToast("Couldn't save that. Check your connection and try again.");
       loadData(true); // reload the real saved state
     }).finally(() => { pendingOps--; });
+  }
+
+  function setMark(habit, day, status, opts = {}) {
+    const key = habit.id + "|" + day;
+    if (status) state.marks.set(key, status); else { state.marks.delete(key); state.notes.delete(key); }
+    renderAll(opts);
+    queueWrite(key, async () => {
+      const result = status
+        ? await db.from("check_ins").upsert({ habit_id: habit.id, day, status }, { onConflict: "habit_id,day" })
+        : await db.from("check_ins").delete().eq("habit_id", habit.id).eq("day", day);
+      if (result.error) throw result.error;
+    });
+  }
+
+  // A note belongs to a day that is marked done or skipped.
+  function saveNote(habit, day, text) {
+    const key = habit.id + "|" + day;
+    const status = state.marks.get(key);
+    if (!status) return;
+    const note = text.trim().slice(0, 200);
+    if (note) state.notes.set(key, note); else state.notes.delete(key);
+    renderAll();
+    queueWrite(key, async () => {
+      const result = await db.from("check_ins").upsert({ habit_id: habit.id, day, status, note: note || null }, { onConflict: "habit_id,day" });
+      if (result.error) throw result.error;
+    });
+  }
+
+  // Move a habit up or down in your list, and save the new order.
+  function moveHabit(index, delta) {
+    const other = index + delta;
+    if (other < 0 || other >= state.habits.length) return;
+    const moved = state.habits[index];
+    [state.habits[index], state.habits[other]] = [state.habits[other], state.habits[index]];
+    const changed = [];
+    state.habits.forEach((h, i) => { if (h.sort_order !== i + 1) { h.sort_order = i + 1; changed.push(h); } });
+    renderAll();
+    const btn = document.querySelector('[data-habit="' + moved.id + '"][data-dir="' + delta + '"]:not(:disabled)')
+      || document.querySelector('[data-habit="' + moved.id + '"]:not(:disabled)');
+    if (btn) btn.focus({ preventScroll: true });
+    queueWrite("order", async () => {
+      for (const h of changed) {
+        const { error } = await db.from("habits").update({ sort_order: h.sort_order }).eq("id", h.id);
+        if (error) throw error;
+      }
+    });
   }
 
   // Tapping a row: done <-> not done. (A skipped day becomes done.)
@@ -1345,8 +1562,15 @@
     actionTarget = { habit, day };
     $("actionTitle").textContent = habit.name;
     $("actionDate").textContent = longDate(parseYmd(day));
-    $("actionSkip").textContent = state.marks.get(habit.id + "|" + day) === "skipped" ? "Clear skip" : "Skip this day";
+    const key = habit.id + "|" + day;
+    const mark = state.marks.get(key);
+    $("actionSkip").textContent = mark === "skipped" ? "Clear skip" : "Skip this day";
+    $("noteInput").value = state.notes.get(key) || "";
+    $("noteInput").disabled = !mark;
+    $("noteSave").disabled = !mark;
+    $("noteHint").textContent = mark ? "Up to 200 characters." : "Mark it done or skipped first.";
     $("actionSheet").showModal();
+    if (document.activeElement) document.activeElement.blur();
   }
 
   function handleSkip() {
@@ -1362,6 +1586,14 @@
     showToast("Skipped. Your streak stays safe.", {
       label: "Undo", onClick: () => setMark(habit, day, before, { justKey: key })
     });
+  }
+
+  function handleNoteSave() {
+    const target = actionTarget;
+    if (!target) return;
+    $("actionSheet").close();
+    saveNote(target.habit, target.day, $("noteInput").value);
+    showToast("Note saved.");
   }
 
   function handleActionEdit() {
@@ -1385,6 +1617,11 @@
     $("habitName").value = habit ? habit.name : (opts.name || "");
     sheetDays = new Set(habit ? habit.days : [0, 1, 2, 3, 4, 5, 6]);
     sheetColor = habit ? colorIndex(habit) : nextFreeColor();
+    sheetMode = habit && isWeekly(habit) ? "weekly" : "days";
+    sheetTimes = habit && isWeekly(habit) ? habit.target_per_week : 3;
+    $("modeSeg").hidden = !state.hasWeekly;
+    if (!state.hasWeekly) sheetMode = "days";
+    renderMode();
     $("colorGroup").hidden = !state.hasColor;
     $("remindGroup").hidden = !state.hasReminders;
     $("remindTime").value = habit && habit.remind_time ? String(habit.remind_time).slice(0, 5) : "";
@@ -1397,6 +1634,27 @@
     $("habitSheet").showModal();
     if (!habit) $("habitName").focus();          // new habit: ready to type
     else if (document.activeElement) document.activeElement.blur(); // editing: don't pop up the keyboard
+  }
+
+  // "Specific days" vs "Times a week": show the right controls.
+  function renderMode() {
+    const weekly = sheetMode === "weekly";
+    $("modeDays").setAttribute("aria-pressed", String(!weekly));
+    $("modeWeekly").setAttribute("aria-pressed", String(weekly));
+    $("daysPane").hidden = weekly;
+    $("weeklyPane").hidden = !weekly;
+    const box = $("times");
+    box.replaceChildren();
+    for (let n = 1; n <= 6; n++) {
+      const b = el("button", { type: "button", class: "day", role: "radio", text: String(n),
+        "aria-label": n + (n === 1 ? " time" : " times") + " a week", "aria-checked": String(n === sheetTimes) });
+      b.setAttribute("aria-pressed", String(n === sheetTimes));
+      b.addEventListener("click", () => {
+        sheetTimes = n;
+        for (const other of box.children) { other.setAttribute("aria-checked", String(other === b)); other.setAttribute("aria-pressed", String(other === b)); }
+      });
+      box.append(b);
+    }
   }
 
   // The seven day buttons (Sun ... Sat). Tap to turn each on or off.
@@ -1437,12 +1695,15 @@
     event.preventDefault();
     const editing = sheetEditing;
     const name = $("habitName").value.trim();
-    const days = [...sheetDays].sort((a, b) => a - b);
+    const weekly = state.hasWeekly && sheetMode === "weekly";
+    const days = weekly ? [0, 1, 2, 3, 4, 5, 6] : [...sheetDays].sort((a, b) => a - b);
 
     if (!name) { $("sheetError").textContent = "Give your habit a name."; return; }
     if (days.length === 0) { $("sheetError").textContent = "Pick at least one day."; return; }
 
     const fields = { name, days };
+    if (state.hasWeekly) fields.target_per_week = weekly ? sheetTimes : null;
+    if (!editing && state.hasOrder) fields.sort_order = Math.max(0, ...state.habits.map(h => h.sort_order || 0)) + 1;
     if (state.hasColor) fields.color = sheetColor;
     if (state.hasReminders) {
       const rt = $("remindTime").value || null;                       // "08:00" or nothing
@@ -1589,8 +1850,47 @@
   // The "..." menu
   $("actionClose").addEventListener("click", () => $("actionSheet").close());
   $("actionSkip").addEventListener("click", handleSkip);
+  $("noteSave").addEventListener("click", handleNoteSave);
+  $("exportBtn").addEventListener("click", exportCsv);
+  $("modeDays").addEventListener("click", () => { sheetMode = "days"; renderMode(); });
+  $("modeWeekly").addEventListener("click", () => { sheetMode = "weekly"; renderMode(); });
   $("actionEdit").addEventListener("click", handleActionEdit);
   $("actionSheet").addEventListener("close", () => { actionTarget = null; });
+  // ======================================================================
+  // 16b. EXPORTING YOUR DATA
+  // Builds a spreadsheet file (CSV) of every check-in and note, right on your
+  // phone. Nothing is sent anywhere except the download to your own device.
+  // ======================================================================
+  // One CSV cell. Values that start with = + - @ could be treated as a formula by
+  // a spreadsheet, so we put a quote mark in front to keep them as plain text.
+  function csvCell(v) {
+    let t = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+    return '"' + t.replace(/"/g, '""') + '"';
+  }
+  async function exportCsv() {
+    const btn = $("exportBtn");
+    btn.disabled = true;
+    try {
+      const habitsRes = await db.from("habits").select("id,name,archived");
+      if (habitsRes.error) throw habitsRes.error;
+      const names = new Map((habitsRes.data || []).map(h => [h.id, h.name + (h.archived ? " (archived)" : "")]));
+      const rows = await fetchAllPages(() => db.from("check_ins").select("habit_id,day,status,note")
+        .order("day", { ascending: true }).order("habit_id", { ascending: true }));
+      const lines = [["Date", "Habit", "Status", "Note"].map(csvCell).join(",")];
+      for (const r of rows) lines.push([r.day, names.get(r.habit_id) || "", r.status, r.note || ""].map(csvCell).join(","));
+      const blob = new Blob(["\uFEFF" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+      const a = el("a", { href: URL.createObjectURL(blob), download: "habits-" + ymd(todayNoon()) + ".csv" });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      showToast("Exported " + rows.length + (rows.length === 1 ? " check-in." : " check-ins."));
+    } catch (e) {
+      showToast("Couldn't export. Check your connection and try again.");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ======================================================================
   // 17. REMINDERS
   // Two ways to be reminded, and you can use either or both:
@@ -1610,7 +1910,7 @@
   $("remindClear").addEventListener("click", () => { $("remindTime").value = ""; updateRemindUi(); });
 
   // --- A) Calendar alarm: build a small ".ics" file and hand it to the phone ---
-  const icsText = t => String(t).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  const icsText = t => String(t).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
   function buildIcs(name, days, hhmm) {
     const [H, M] = hhmm.split(":").map(Number);
     const now = new Date();
