@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Habits</title>
+
+<!--
+  HABIT TRACKER - STEP 2: LOGIN + APP SHELL
+
+  WHAT THIS FILE DOES
+  - Lets a person create an account and log in (using Supabase)
+  - Remembers them, so they stay logged in on this device
+  - Shows the app's three tabs: Today, History, Habits
+  - Lets them log out
+
+  WHAT COMES NEXT (not built yet)
+  - Step 3: adding habits and checking them off on the Today tab
+
+  HOW THE FILE IS ORGANIZED
+  1. <style>  = how everything LOOKS
+  2. <body>   = the SCREENS (loading, login, check-your-email, the app)
+  3. <script> = the BEHAVIOR (logging in, switching screens and tabs)
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+
+<!-- Supabase's code library. It gives us ready-made login functions. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  /* ---------- COLORS (same cozy neutrals as your subscription tracker) ---------- */
+  :root {
+    --bg: #e9e3d9;         /* oatmeal page background */
+    --card: #f6f2ea;       /* soft linen boxes */
+    --ink: #2f2a24;        /* charcoal-brown text */
+    --muted: #7a6f62;      /* taupe secondary text */
+    --line: #d6cdbf;       /* sand borders */
+    --accent: #7a5c45;     /* walnut: buttons, highlights */
+    --accent-ink: #f6f2ea; /* text on walnut */
+    --danger: #a63d32;     /* brick: errors */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1b17; --card: #2a2520; --ink: #efe8dc; --muted: #a89d8e;
+      --line: #3d362e; --accent: #d3a97f; --accent-ink: #231c15; --danger: #e07b6e;
+    }
+  }
+
+  /* ---------- BASE ---------- */
+  * { box-sizing: border-box; }
+
+  /* The "hidden" attribute hides things. This line makes sure no other
+     CSS rule can accidentally override it. Important for switching screens! */
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 6px; line-height: 1.15; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+
+  /* Visible outline when using a keyboard (good for accessibility) */
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- BUTTONS ---------- */
+  button { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 10px; padding: 13px 16px; min-height: 48px; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .primary { background: var(--accent); color: var(--accent-ink); width: 100%; }
+  .secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); width: 100%; }
+  .linkbtn { background: transparent; color: var(--accent); padding: 4px 2px; min-height: 0; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ---------- LOADING SCREEN ---------- */
+  .splash { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
+
+  /* ---------- LOGIN AND CHECK-EMAIL SCREENS ---------- */
+  .auth-screen {
+    max-width: 420px; margin: 0 auto;
+    min-height: 100vh;
+    padding: max(28px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; justify-content: center;
+  }
+
+  /* The row of seven dots = a week of habits. It fills in once, on load. */
+  .week { display: block; width: 112px; height: 16px; margin-bottom: 18px; }
+  .dot-on  { fill: var(--accent); transform-box: fill-box; transform-origin: center; animation: pop 400ms ease-out both; }
+  .dot-off { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .dot-on:nth-child(1) { animation-delay: 100ms; }
+  .dot-on:nth-child(2) { animation-delay: 170ms; }
+  .dot-on:nth-child(3) { animation-delay: 240ms; }
+  .dot-on:nth-child(4) { animation-delay: 310ms; }
+  .dot-on:nth-child(5) { animation-delay: 380ms; }
+  @keyframes pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .auth-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 20px; margin-top: 18px;
+  }
+  form { display: grid; gap: 14px; }
+  label { display: grid; gap: 5px; font-size: 0.9rem; color: var(--muted); }
+  input {
+    font: inherit; font-size: 1rem;      /* 16px+ stops iPhones zooming in */
+    color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; width: 100%; min-height: 48px;
+  }
+  .pw { position: relative; }
+  .pw input { padding-right: 70px; }
+  .pw-toggle {
+    position: absolute; right: 4px; top: 4px; bottom: 4px;
+    min-height: 0; padding: 0 12px;
+    background: transparent; color: var(--accent); font-size: 0.9rem;
+  }
+  .hint { font-size: 0.85rem; color: var(--muted); }
+  .error { color: var(--danger); font-size: 0.92rem; min-height: 1.3em; }
+  .status { color: var(--muted); font-size: 0.92rem; min-height: 1.3em; }
+  .switch { text-align: center; margin: 16px 0 0; color: var(--muted); }
+
+  /* ---------- THE APP (after login) ---------- */
+  .app-main {
+    max-width: 560px; margin: 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));
+  }
+  .panel { animation: fade 160ms ease-out; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .panel h1 { margin-top: 8px; }
+  .date { color: var(--muted); margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 6px; }
+  .card p:last-child { margin-bottom: 0; }
+
+  /* ---------- BOTTOM TAB BAR ---------- */
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--card); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabs { max-width: 560px; margin: 0 auto; display: flex; }
+  .tab {
+    flex: 1; background: transparent; color: var(--muted);
+    border-radius: 0; padding: 10px 0 8px; min-height: 60px;
+    display: grid; justify-items: center; gap: 2px;
+    font-size: 0.78rem; font-weight: 600;
+  }
+  .tab svg { width: 24px; height: 24px; }
+  .tab[aria-current="page"] { color: var(--accent); }
+
+  /* If a person's device is set to "reduce motion", turn animations off */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- SCREEN 1: LOADING (shown for a split second while we check if you're logged in) -->
+<div id="splash" class="splash" role="status">Loading…</div>
+
+<!-- SCREEN 2: LOG IN / CREATE ACCOUNT (one form that switches modes) -->
+<main id="authScreen" class="auth-screen" hidden>
+  <!-- Seven dots: five filled, two empty -->
+  <svg class="week" viewBox="0 0 112 16" aria-hidden="true">
+    <circle class="dot-on"  cx="8"   cy="8" r="6"/>
+    <circle class="dot-on"  cx="24"  cy="8" r="6"/>
+    <circle class="dot-on"  cx="40"  cy="8" r="6"/>
+    <circle class="dot-on"  cx="56"  cy="8" r="6"/>
+    <circle class="dot-on"  cx="72"  cy="8" r="6"/>
+    <circle class="dot-off" cx="88"  cy="8" r="5"/>
+    <circle class="dot-off" cx="104" cy="8" r="5"/>
+  </svg>
+  <h1 id="authTitle">Welcome back</h1>
+  <p class="muted" id="authSub">Log in to see today's habits.</p>
+
+  <div class="auth-card">
+    <!-- novalidate: we show our own plain-language messages instead of the browser's -->
+    <form id="authForm" novalidate>
+      <label>Email
+        <input id="email" type="email" autocomplete="email" inputmode="email"
+               autocapitalize="none" spellcheck="false" placeholder="you@example.com">
+      </label>
+      <label>Password
+        <div class="pw">
+          <input id="password" type="password" autocomplete="current-password">
+          <button type="button" class="pw-toggle" id="pwToggle" aria-pressed="false" aria-label="Show password">Show</button>
+        </div>
+        <span class="hint" id="pwHint" hidden>Use at least 8 characters.</span>
+      </label>
+      <div class="error" id="authError" role="alert"></div>
+      <button class="primary" type="submit" id="authSubmit">Log in</button>
+    </form>
+  </div>
+
+  <p class="switch">
+    <span id="switchText">New here?</span>
+    <button type="button" class="linkbtn" id="switchBtn">Create an account</button>
+  </p>
+</main>
+
+<!-- SCREEN 3: CHECK YOUR EMAIL (only appears if email confirmation is turned on) -->
+<main id="checkScreen" class="auth-screen" hidden>
+  <h1>Check your email</h1>
+  <p class="muted">We sent a link to <strong id="checkEmail"></strong>. Tap it to finish creating your account.</p>
+  <div class="auth-card">
+    <div class="status" id="resendStatus" role="status"></div>
+    <button class="secondary" type="button" id="resendBtn">Send the email again</button>
+  </div>
+  <p class="switch"><button type="button" class="linkbtn" id="backToLogin">Back to log in</button></p>
+</main>
+
+<!-- SCREEN 4: THE APP (only visible when logged in) -->
+<div id="appScreen" hidden>
+  <main class="app-main">
+
+    <section class="panel" id="tab-today">
+      <h1>Today</h1>
+      <div class="date" id="todayDate"></div>
+      <div class="card">
+        <h2>You're signed in</h2>
+        <p class="muted">Your account works. In the next step you'll add habits here and check them off with one tap.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-history" hidden>
+      <h1>History</h1>
+      <div class="card">
+        <h2>Nothing to show yet</h2>
+        <p class="muted">Once you start checking off habits, your weeks and streaks appear here.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-habits" hidden>
+      <h1>Habits</h1>
+      <div class="card">
+        <h2>Your habits</h2>
+        <p class="muted">You'll add and edit habits here in the next step.</p>
+      </div>
+      <div class="card">
+        <h2>Account</h2>
+        <p class="muted">Signed in as <span id="accountEmail"></span></p>
+        <button class="secondary" type="button" id="logoutBtn">Log out</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Bottom tab bar. Each button has an icon (SVG drawing) and a label. -->
+  <nav class="tabbar" aria-label="Main">
+    <div class="tabs">
+      <button class="tab" type="button" data-tab="today" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></svg>
+        Today
+      </button>
+      <button class="tab" type="button" data-tab="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+        History
+      </button>
+      <button class="tab" type="button" data-tab="habits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r="0.6"/><circle cx="4.8" cy="12" r="0.6"/><circle cx="4.8" cy="17" r="0.6"/></svg>
+        Habits
+      </button>
+    </div>
+  </nav>
+</div>
+
+<script>
+  // ======================================================================
+  // 1. CONNECTING TO SUPABASE
+  // These two values tell the app WHICH Supabase project to talk to.
+  // They are meant to be public (they're visible to anyone who views the
+  // page) and that's safe: the privacy rules you installed in the database
+  // are what protect each person's data.
+  // NEVER put a key that starts with "sb_secret_" in this file.
+  // ======================================================================
+  const SUPABASE_URL = "https://ujmcxqopymupiwakwfdb.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_BRYsZUKxHwL43t36mRF0nA_YF-6rMsQ";
+
+  // Shortcut: find an element on the page by its id
+  const $ = id => document.getElementById(id);
+
+  // If the Supabase library didn't load (for example, no internet),
+  // say so clearly instead of showing a blank page.
+  if (!window.supabase) {
+    $("splash").textContent = "Couldn't load the app. Check your connection and refresh.";
+    throw new Error("Supabase library failed to load");
+  }
+
+  // "db" is our connection. By default it also remembers who is logged in
+  // (it stores a small login token in the browser).
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ======================================================================
+  // 2. APP STATE: a few variables that describe "where we are"
+  // ======================================================================
+  let mode = "login";       // "login" or "signup"
+  let screen = "splash";    // which screen is showing right now
+  let user = null;          // the logged-in person (null = nobody)
+  let pendingEmail = "";    // the email waiting to be confirmed
+
+  // ======================================================================
+  // 3. SWITCHING SCREENS AND TABS
+  // ======================================================================
+  const SCREENS = { splash: "splash", auth: "authScreen", check: "checkScreen", app: "appScreen" };
+
+  // Show one screen and hide the rest.
+  function showScreen(name) {
+    screen = name;
+    for (const [key, id] of Object.entries(SCREENS)) {
+      $(id).hidden = key !== name;
+    }
+    if (name === "app") {
+      $("accountEmail").textContent = user ? user.email : "";
+      $("todayDate").textContent = new Date().toLocaleDateString(undefined, {
+        weekday: "long", month: "long", day: "numeric"
+      });
+    }
+  }
+
+  // Show one tab (Today / History / Habits) and mark its button as current.
+  function showTab(name) {
+    for (const panel of document.querySelectorAll(".panel")) {
+      panel.hidden = panel.id !== "tab-" + name;
+    }
+    for (const btn of document.querySelectorAll(".tab")) {
+      if (btn.dataset.tab === name) btn.setAttribute("aria-current", "page");
+      else btn.removeAttribute("aria-current");
+    }
+    window.scrollTo(0, 0);
+  }
+
+  // Switch the form between "log in" and "create account" wording.
+  function setMode(newMode) {
+    mode = newMode;
+    const signup = mode === "signup";
+    $("authTitle").textContent = signup ? "Create your account" : "Welcome back";
+    $("authSub").textContent   = signup ? "It takes about ten seconds." : "Log in to see today's habits.";
+    $("authSubmit").textContent = signup ? "Create account" : "Log in";
+    $("switchText").textContent = signup ? "Already have an account?" : "New here?";
+    $("switchBtn").textContent  = signup ? "Log in" : "Create an account";
+    $("pwHint").hidden = !signup;
+    // This hint helps phones and password managers offer the right thing.
+    $("password").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+    setError("");
+  }
+
+  // ======================================================================
+  // 4. SMALL HELPERS
+  // ======================================================================
+  function setError(message) { $("authError").textContent = message; }
+
+  // While a request is running, disable the button so it can't be tapped twice.
+  function setBusy(busy) {
+    const btn = $("authSubmit");
+    btn.disabled = busy;
+    if (busy) btn.textContent = mode === "signup" ? "Creating account…" : "Logging in…";
+    else btn.textContent = mode === "signup" ? "Create account" : "Log in";
+  }
+
+  // Turn Supabase's technical error messages into plain language.
+  function friendlyError(err) {
+    const msg = ((err && err.message) || "").toLowerCase();
+    const code = (err && err.code) || "";
+    if (msg.includes("invalid login credentials"))
+      return "That email and password don't match. Check them and try again.";
+    if (msg.includes("email not confirmed"))
+      return "Confirm your email first. We sent you a link when you signed up.";
+    if (code === "user_already_exists" || msg.includes("already registered"))
+      return "That email already has an account. Try logging in instead.";
+    if (code === "over_email_send_rate_limit" || msg.includes("rate limit") || (err && err.status === 429))
+      return "Too many attempts right now. Wait a few minutes and try again.";
+    if (msg.includes("not authorized"))
+      return "This app can't send emails to that address yet. Try again later.";
+    if (code === "weak_password" || (msg.includes("password") && msg.includes("least")))
+      return "Choose a stronger password with at least 8 characters.";
+    if (msg.includes("fetch") || msg.includes("network"))
+      return "Can't reach the server. Check your connection and try again.";
+    return "Something went wrong. Try again in a moment.";
+  }
+
+  // The address people return to after tapping an email link
+  const pageUrl = window.location.origin + window.location.pathname;
+
+  // ======================================================================
+  // 5. LOGGING IN AND CREATING AN ACCOUNT
+  // ======================================================================
+  async function handleAuth(event) {
+    event.preventDefault(); // stop the page from reloading
+
+    const email = $("email").value.trim().toLowerCase();
+    const password = $("password").value;
+
+    // Check the input first, with clear messages.
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setError("Enter a valid email address."); return; }
+    if (!password) { setError("Enter your password."); return; }
+    if (mode === "signup" && password.length < 8) {
+      setError("Choose a password with at least 8 characters."); return;
+    }
+
+    setError("");
+    setBusy(true);
+    try {
+      if (mode === "login") {
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        // Success: the "auth state listener" (section 6) shows the app.
+      } else {
+        const { data, error } = await db.auth.signUp({
+          email, password, options: { emailRedirectTo: pageUrl }
+        });
+        if (error) throw error;
+
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          // Supabase's way of saying "this email is already registered"
+          setError("That email already has an account. Try logging in instead.");
+        } else if (!data.session) {
+          // Email confirmation is ON: no login yet, they must tap the email link.
+          pendingEmail = email;
+          $("checkEmail").textContent = email;
+          $("resendStatus").textContent = "";
+          showScreen("check");
+        }
+        // Otherwise they're logged in already, and the listener handles it.
+      }
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendEmail() {
+    const btn = $("resendBtn");
+    btn.disabled = true;
+    $("resendStatus").textContent = "Sending…";
+    try {
+      const { error } = await db.auth.resend({
+        type: "signup", email: pendingEmail, options: { emailRedirectTo: pageUrl }
+      });
+      if (error) throw error;
+      $("resendStatus").textContent = "Sent. It can take a minute to arrive.";
+    } catch (err) {
+      $("resendStatus").textContent = friendlyError(err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function logOut() {
+    $("logoutBtn").disabled = true;
+    try { await db.auth.signOut(); } catch (e) { /* the listener below still handles it */ }
+    $("logoutBtn").disabled = false;
+  }
+
+  // ======================================================================
+  // 6. REACTING WHEN SOMEONE LOGS IN OR OUT
+  // Supabase calls this function whenever the login state changes: when the
+  // page opens, after logging in, after logging out, or after tapping an
+  // email link. This one place decides which screen to show.
+  // ======================================================================
+  db.auth.onAuthStateChange((event, session) => {
+    user = session ? session.user : null;
+
+    if (user) {
+      const justArrived = screen !== "app";
+      showScreen("app");
+      if (justArrived) {
+        showTab("today");
+        // Clear the form so the password doesn't linger on the page.
+        $("authForm").reset();
+        setMode("login");
+      }
+    } else if (screen !== "check") {
+      // Not logged in: show the login screen (but don't interrupt the
+      // "check your email" message).
+      showScreen("auth");
+    }
+  });
+
+  // Backup: if the listener above hasn't fired yet, ask directly.
+  db.auth.getSession().then(({ data }) => {
+    if (screen !== "splash") return; // the listener already handled it
+    user = data.session ? data.session.user : null;
+    showScreen(user ? "app" : "auth");
+    if (user) showTab("today");
+  }).catch(() => {
+    if (screen === "splash") showScreen("auth");
+  });
+
+  // ======================================================================
+  // 7. CONNECTING BUTTONS TO FUNCTIONS
+  // "When X is tapped, run Y."
+  // ======================================================================
+  $("authForm").addEventListener("submit", handleAuth);
+  $("switchBtn").addEventListener("click", () => setMode(mode === "login" ? "signup" : "login"));
+  $("resendBtn").addEventListener("click", resendEmail);
+  $("backToLogin").addEventListener("click", () => { setMode("login"); showScreen("auth"); });
+  $("logoutBtn").addEventListener("click", logOut);
+
+  // Show/hide password
+  $("pwToggle").addEventListener("click", () => {
+    const input = $("password");
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    $("pwToggle").textContent = show ? "Hide" : "Show";
+    $("pwToggle").setAttribute("aria-pressed", String(show));
+    $("pwToggle").setAttribute("aria-label", show ? "Hide password" : "Show password");
+  });
+
+  // The three bottom tabs
+  for (const btn of document.querySelectorAll(".tab")) {
+    btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  }
+</script>
+</body>
+</html>
