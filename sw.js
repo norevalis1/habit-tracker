@@ -8,7 +8,7 @@
 // When you change index.html in the future, bump the number in CACHE below.
 // That tells phones to throw away the old copy.
 
-const CACHE = "habits-v2";
+const CACHE = "habits-v3";
 const CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 const APP_FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
@@ -16,7 +16,10 @@ const APP_FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.p
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(APP_FILES);
+    // Save each file separately. If one is missing (say an icon wasn't uploaded),
+    // the others still get saved and the helper still starts. (addAll would
+    // give up entirely and the helper would never switch on.)
+    await Promise.allSettled(APP_FILES.map(f => cache.add(f)));
     // The login/database library comes from another website; save it too
     // (best effort: don't fail the install if it can't be fetched right now).
     try { await cache.put(CDN, await fetch(new Request(CDN, { mode: "no-cors" }))); } catch (e) { /* ok */ }

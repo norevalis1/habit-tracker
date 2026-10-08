@@ -1736,7 +1736,15 @@
   function readyRegistration() {
     return Promise.race([
       navigator.serviceWorker.ready,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("The app's helper isn't ready. Close the app fully, reopen it, and try again.")), 8000))
+      new Promise((_, rej) => setTimeout(async () => {
+        // Say WHY it isn't ready, so we can fix the right thing.
+        let why = "no helper is registered" + (window.__swError ? " (" + window.__swError + ")" : "");
+        try {
+          const r = await navigator.serviceWorker.getRegistration();
+          if (r) why = "helper state: " + (r.active ? "active" : r.waiting ? "waiting" : r.installing ? "installing/" + r.installing.state : "none");
+        } catch (e) { /* keep the message above */ }
+        rej(new Error("The app's helper isn't ready (" + why + "). Close the app fully, reopen it, and try again."));
+      }, 8000))
     ]);
   }
 
@@ -1841,7 +1849,7 @@
 
   // Register the service worker (only works on the real https site, not on a local file).
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => { /* app still works without it */ }); });
+    window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(e => { window.__swError = String((e && e.message) || e).slice(0, 80); /* the app still works without it */ }); });
   }
 </script>
 </body>
