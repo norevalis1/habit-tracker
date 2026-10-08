@@ -3,53 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f1ede4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171510" media="(prefers-color-scheme: dark)">
 <title>Habits</title>
 
 <!--
-  HABIT TRACKER - STEP 2: LOGIN + APP SHELL
+  HABIT TRACKER - STEP 3: HABITS AND ONE-TAP CHECK-OFF
 
   WHAT THIS FILE DOES
-  - Lets a person create an account and log in (using Supabase)
-  - Remembers them, so they stay logged in on this device
-  - Shows the app's three tabs: Today, History, Habits
-  - Lets them log out
+  - Login, sign-up and log out (Supabase), same as step 2
+  - Add, edit and archive habits, each with its own weekly schedule
+  - Today tab: your habits for today, tap once to check one off
+  - A "Yesterday" switch, so a forgotten day is easy to fix
+  - Everything is saved to your cloud database and syncs across devices
 
-  WHAT COMES NEXT (not built yet)
-  - Step 3: adding habits and checking them off on the Today tab
+  WHAT COMES NEXT (step 4)
+  - Streaks, a monthly history view, and the "skip a day" option
 
   HOW THE FILE IS ORGANIZED
   1. <style>  = how everything LOOKS
-  2. <body>   = the SCREENS (loading, login, check-your-email, the app)
-  3. <script> = the BEHAVIOR (logging in, switching screens and tabs)
+  2. <body>   = the SCREENS and the pop-up form
+  3. <script> = the BEHAVIOR
+
+  A NOTE ON THE LOOK
+  The app uses your phone's own system font (San Francisco on iPhone) so it
+  feels native and loads instantly. All colors live in one place, the
+  ":root" block below. Change a value there and the whole app updates.
 -->
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
-
-<!-- Supabase's code library. It gives us ready-made login functions. -->
+<!-- Supabase's code library. It gives us ready-made login and database functions. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
-  /* ---------- COLORS (same cozy neutrals as your subscription tracker) ---------- */
+  /* ---------- COLORS ----------
+     A calm base of warm neutrals (oat and cream), one deep-sage accent for the
+     app itself, and six earth tones (--c0 to --c5) that give each habit its
+     own color. Change any value here and the whole app updates. */
   :root {
-    --bg: #e9e3d9;         /* oatmeal page background */
-    --card: #f6f2ea;       /* soft linen boxes */
-    --ink: #2f2a24;        /* charcoal-brown text */
-    --muted: #7a6f62;      /* taupe secondary text */
-    --line: #d6cdbf;       /* sand borders */
-    --accent: #7a5c45;     /* walnut: buttons, highlights */
-    --accent-ink: #f6f2ea; /* text on walnut */
-    --danger: #a63d32;     /* brick: errors */
+    --bg: #f1ede4;                      /* warm oat page background */
+    --card: #fdfbf6;                    /* cream surface for grouped lists */
+    --ink: #27231e;                     /* main text */
+    --muted: #675f54;                   /* secondary text */
+    --faint: #8f877a;                   /* chevrons and other quiet details */
+    --line: rgba(60, 50, 35, 0.15);     /* thin dividers */
+    --fill: rgba(105, 85, 55, 0.10);    /* soft warm-taupe backgrounds */
+    --tint: #4d6853;                    /* the accent: deep sage */
+    --tint-ink: #fbf8f1;                /* text on top of the accent */
+    --danger: #b02f27;                  /* archive / log out / errors */
+    --seg-on: #fdfbf6;                  /* the selected Yesterday/Today segment */
+    --bar-bg: rgba(253, 251, 246, 0.80);/* frosted tab bar */
+    --shadow: 0 1px 2px rgba(50, 40, 25, 0.06), 0 6px 20px rgba(50, 40, 25, 0.07);
+
+    /* Habit colors: each habit gets one of these, automatically */
+    --c0: #5b7a55;                      /* moss */
+    --c1: #bb6840;                      /* terracotta */
+    --c2: #a07318;                      /* ochre */
+    --c3: #4f6f8c;                      /* slate blue */
+    --c4: #94566b;                      /* plum */
+    --c5: #7d5a3c;                      /* walnut */
+    --c-ink: #fffdf8;                   /* the check mark on top of a habit color */
+    color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1f1b17; --card: #2a2520; --ink: #efe8dc; --muted: #a89d8e;
-      --line: #3d362e; --accent: #d3a97f; --accent-ink: #231c15; --danger: #e07b6e;
+      --bg: #171510; --card: #221f19; --ink: #f1ece2; --muted: #aba394;
+      --faint: #7b7365; --line: rgba(255, 245, 225, 0.13); --fill: rgba(255, 238, 210, 0.10);
+      --tint: #9cbb93; --tint-ink: #141a10; --danger: #f28b80;
+      --bar-bg: rgba(34, 31, 25, 0.80); --seg-on: #3c372e;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
+      --c0: #8fb386; --c1: #e29870; --c2: #dbb057; --c3: #8fb2d0;
+      --c4: #d198ad; --c5: #d0a87e; --c-ink: #17120c;
     }
   }
 
   /* ---------- BASE ---------- */
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
   /* The "hidden" attribute hides things. This line makes sure no other
      CSS rule can accidentally override it. Important for switching screens! */
@@ -59,39 +87,87 @@
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+                 system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 1.0625rem;       /* 17px, the standard iPhone body size */
+    line-height: 1.4;
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
   }
-  h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 6px; line-height: 1.15; }
+  h1 { font-size: 2.125rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+  h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
   p { margin: 0 0 12px; }
   .muted { color: var(--muted); }
+  .footnote { font-size: 0.875rem; color: var(--muted); margin: 8px 16px 0; }
 
   /* Visible outline when using a keyboard (good for accessibility) */
-  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  :focus-visible { outline: 3px solid var(--tint); outline-offset: 2px; }
 
   /* ---------- BUTTONS ---------- */
-  button { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 10px; padding: 13px 16px; min-height: 48px; }
-  button:disabled { opacity: 0.6; cursor: default; }
-  .primary { background: var(--accent); color: var(--accent-ink); width: 100%; }
-  .secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); width: 100%; }
-  .linkbtn { background: transparent; color: var(--accent); padding: 4px 2px; min-height: 0; text-decoration: underline; text-underline-offset: 3px; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border: 0;
+    border-radius: 12px; padding: 0 18px; min-height: 50px; color: var(--ink);
+  }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button:active:not(:disabled) { opacity: 0.7; }
+  .primary { background: var(--tint); color: var(--tint-ink); width: 100%; }
+  .secondary { background: var(--fill); color: var(--tint); width: 100%; }
+  .danger { background: var(--fill); color: var(--danger); width: 100%; }
+  .linkbtn { background: transparent; color: var(--tint); padding: 4px 2px; min-height: 0; font-weight: 500; }
+
+  /* ---------- GROUPED LISTS (the iPhone-settings look) ---------- */
+  .group {
+    background: var(--card); border: 0.5px solid var(--line);
+    border-radius: 14px; overflow: hidden;
+  }
+  .group.pad { padding: 14px 16px 12px; }
+
+  /* One row inside a group: a label on the left, a value or input on the right */
+  .field { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 52px; position: relative; }
+  .field + .field { border-top: 0.5px solid var(--line); }
+  .field:focus-within { box-shadow: inset 0 0 0 2px var(--tint); }
+  .field-name { width: 86px; flex: none; font-weight: 500; }
+  .field-name.auto { width: auto; }
+  .field input {
+    flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
+    font: inherit; padding: 14px 0; min-height: 52px; outline: none;
+  }
+  .field input::placeholder { color: var(--muted); }
+  .field .value { flex: 1; text-align: right; color: var(--muted); overflow-wrap: anywhere; padding: 14px 0; }
+  .field-label { font-size: 0.9375rem; color: var(--muted); margin-bottom: 10px; }
+  .row-action {
+    display: block; width: 100%; border-radius: 0; background: transparent;
+    border-top: 0.5px solid var(--line); min-height: 52px; font-weight: 500;
+  }
+  .row-action.red { color: var(--danger); }
+
+  .error { color: var(--danger); font-size: 0.9375rem; min-height: 1.3em; margin: 0 4px; }
+  .status { color: var(--muted); font-size: 0.9375rem; min-height: 1.3em; }
 
   /* ---------- LOADING SCREEN ---------- */
   .splash { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
 
   /* ---------- LOGIN AND CHECK-EMAIL SCREENS ---------- */
   .auth-screen {
-    max-width: 420px; margin: 0 auto;
-    min-height: 100vh;
+    max-width: 420px; margin: 0 auto; min-height: 100vh;
     padding: max(28px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
     display: flex; flex-direction: column; justify-content: center;
   }
+  .auth-screen .sub { margin: 6px 0 24px; color: var(--muted); }
+  .auth-form { display: grid; gap: 14px; }
+  .switch { text-align: center; margin: 22px 0 0; color: var(--muted); font-size: 0.9375rem; }
+  .pw-toggle {
+    min-height: 44px; padding: 0 4px 0 12px; background: transparent;
+    color: var(--tint); font-weight: 500; font-size: 0.9375rem;
+  }
 
   /* The row of seven dots = a week of habits. It fills in once, on load. */
-  .week { display: block; width: 112px; height: 16px; margin-bottom: 18px; }
-  .dot-on  { fill: var(--accent); transform-box: fill-box; transform-origin: center; animation: pop 400ms ease-out both; }
-  .dot-off { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .week { display: block; width: 112px; height: 16px; margin-bottom: 20px; }
+  .dot-on  { transform-box: fill-box; transform-origin: center; animation: pop 400ms ease-out both; }
+  .dot-on.c0 { fill: var(--c0); } .dot-on.c1 { fill: var(--c1); } .dot-on.c2 { fill: var(--c2); }
+  .dot-on.c3 { fill: var(--c3); } .dot-on.c4 { fill: var(--c4); }
+  .dot-off { fill: none; stroke: var(--faint); stroke-width: 2; }
   .dot-on:nth-child(1) { animation-delay: 100ms; }
   .dot-on:nth-child(2) { animation-delay: 170ms; }
   .dot-on:nth-child(3) { animation-delay: 240ms; }
@@ -99,58 +175,132 @@
   .dot-on:nth-child(5) { animation-delay: 380ms; }
   @keyframes pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-  .auth-card {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 16px; padding: 20px; margin-top: 18px;
-  }
-  form { display: grid; gap: 14px; }
-  label { display: grid; gap: 5px; font-size: 0.9rem; color: var(--muted); }
-  input {
-    font: inherit; font-size: 1rem;      /* 16px+ stops iPhones zooming in */
-    color: var(--ink); background: var(--bg);
-    border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px; width: 100%; min-height: 48px;
-  }
-  .pw { position: relative; }
-  .pw input { padding-right: 70px; }
-  .pw-toggle {
-    position: absolute; right: 4px; top: 4px; bottom: 4px;
-    min-height: 0; padding: 0 12px;
-    background: transparent; color: var(--accent); font-size: 0.9rem;
-  }
-  .hint { font-size: 0.85rem; color: var(--muted); }
-  .error { color: var(--danger); font-size: 0.92rem; min-height: 1.3em; }
-  .status { color: var(--muted); font-size: 0.92rem; min-height: 1.3em; }
-  .switch { text-align: center; margin: 16px 0 0; color: var(--muted); }
-
   /* ---------- THE APP (after login) ---------- */
   .app-main {
     max-width: 560px; margin: 0 auto;
-    padding: max(20px, env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));
+    padding: calc(env(safe-area-inset-top) + 24px) 20px calc(104px + env(safe-area-inset-bottom));
   }
   .panel { animation: fade 160ms ease-out; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  .panel h1 { margin-top: 8px; }
-  .date { color: var(--muted); margin-bottom: 18px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-  .card h2 { font-size: 1.05rem; margin: 0 0 6px; }
-  .card p:last-child { margin-bottom: 0; }
+  .date { color: var(--muted); margin: 4px 0 0; }
+  .panel > .group, .panel > .btn-row { margin-top: 18px; }
 
-  /* ---------- BOTTOM TAB BAR ---------- */
+  /* Yesterday / Today switch (like an iPhone segmented control) */
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr; background: var(--fill);
+    border-radius: 10px; padding: 2px; margin: 18px 0 0;
+  }
+  #todayView, #habitsView { margin-top: 18px; }
+  .seg button {
+    min-height: 36px; border-radius: 8px; background: transparent; color: var(--ink);
+    font-size: 0.9375rem; font-weight: 500; padding: 4px 12px;
+  }
+  .seg button[aria-pressed="true"] {
+    background: var(--seg-on); font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  }
+
+  /* "2 of 3 done", then one slim segment per habit that fills with its color */
+  .summary { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 10px; font-variant-numeric: tabular-nums; }
+  .summary strong { font-weight: 600; }
+  .summary span { color: var(--muted); font-size: 0.9375rem; }
+  .segs { display: flex; gap: 4px; margin: 0 4px 18px; }
+  .segs span { flex: 1; height: 6px; border-radius: 99px; background: var(--fill); transition: background-color 200ms ease; }
+  .segs span.on { background: var(--hc); }
+
+  /* Habit rows */
+  .habit-row {
+    display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+    background: transparent; border-radius: 0; padding: 0 16px; min-height: 58px;
+    font-weight: 500; position: relative;
+  }
+  .habit-row + .habit-row::before {
+    content: ""; position: absolute; top: 0; left: 58px; right: 0; border-top: 0.5px solid var(--line);
+  }
+  .habit-row.edit + .habit-row.edit::before { left: 38px; }
+  .habit-row:active:not(:disabled) { opacity: 1; background: var(--fill); }
+  .habit-row:focus-visible { outline-offset: -3px; }
+
+  .circle {
+    flex: none; width: 28px; height: 28px; border-radius: 50%;
+    border: 1.75px solid var(--hc, var(--faint)); display: grid; place-items: center; color: var(--c-ink);
+  }
+  .circle svg { width: 16px; height: 16px; opacity: 0; }
+  .habit-row[aria-checked="true"] .circle { background: var(--hc); }
+  .habit-row[aria-checked="true"] .circle svg { opacity: 1; }
+  .habit-row[aria-checked="true"] .label { color: var(--muted); }
+  .habit-row.just .circle { animation: tick 280ms cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  @keyframes tick { 0% { transform: scale(0.82); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+  .habit-row.edit { justify-content: space-between; padding: 8px 16px; }
+  .habit-row .lead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .habit-row .dot-hc { width: 10px; height: 10px; border-radius: 50%; background: var(--hc); flex: none; }
+  .habit-row .stack { display: grid; gap: 1px; min-width: 0; }
+  .habit-row .sched { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
+  .habit-row .chev { width: 18px; height: 18px; color: var(--faint); flex: none; }
+
+  /* Empty states */
+  .empty-card { padding: 26px 20px 20px; text-align: center; }
+  .empty-card .btn-row { margin-top: 4px; }
+  .suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 20px; }
+  .chip-btn { background: var(--fill); color: var(--tint); min-height: 40px; border-radius: 999px; padding: 0 16px; font-weight: 500; }
+  .btn-row { display: grid; gap: 10px; }
+  .after-list { margin-top: 18px; }
+
+  /* ---------- BOTTOM TAB BAR (frosted glass) ---------- */
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0;
-    background: var(--card); border-top: 1px solid var(--line);
+    background: var(--bar-bg);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    border-top: 0.5px solid var(--line);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .tabs { max-width: 560px; margin: 0 auto; display: flex; }
   .tab {
-    flex: 1; background: transparent; color: var(--muted);
-    border-radius: 0; padding: 10px 0 8px; min-height: 60px;
-    display: grid; justify-items: center; gap: 2px;
-    font-size: 0.78rem; font-weight: 600;
+    flex: 1; background: transparent; color: var(--muted); border-radius: 0;
+    padding: 8px 0 6px; min-height: 56px; display: grid; justify-items: center; gap: 3px;
+    font-size: 0.6875rem; font-weight: 500;
   }
-  .tab svg { width: 24px; height: 24px; }
-  .tab[aria-current="page"] { color: var(--accent); }
+  .tab svg { width: 26px; height: 26px; }
+  .tab[aria-current="page"] { color: var(--tint); }
+
+  /* ---------- ADD / EDIT POP-UP ---------- */
+  dialog.sheet {
+    padding: 0; border: 0; background: var(--bg); color: var(--ink);
+    border-radius: 20px; width: calc(100% - 24px); max-width: 480px;
+    margin: max(12px, env(safe-area-inset-top)) auto auto;
+    max-height: calc(100vh - 24px); overflow: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  }
+  dialog.sheet::backdrop {
+    background: rgba(20, 14, 8, 0.45);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  }
+  .sheet-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 8px; }
+  .sheet-bar h2 { margin: 0; font-size: 1.0625rem; text-align: center; }
+  .bar-btn { background: transparent; color: var(--tint); min-height: 44px; padding: 0 12px; font-weight: 400; }
+  .bar-btn.strong { font-weight: 600; justify-self: end; }
+  #sheetCancel { justify-self: start; }
+  .sheet-body { padding: 4px 16px 18px; display: grid; gap: 16px; }
+
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .day {
+    min-height: 44px; padding: 0; border-radius: 10px; background: var(--fill);
+    color: var(--muted); font-size: 0.8125rem; font-weight: 500;
+  }
+  .day[aria-pressed="true"] { background: var(--tint); color: var(--tint-ink); }
+  .presets { display: flex; gap: 18px; margin-top: 12px; }
+
+  /* ---------- TOAST (the small message with "Undo") ---------- */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: calc(100% - 32px); max-width: 420px; z-index: 30;
+    background: var(--ink); color: var(--bg); border-radius: 14px; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    font-size: 0.9375rem; box-shadow: var(--shadow);
+  }
+  .toast button { background: transparent; color: var(--bg); text-decoration: underline; min-height: 0; padding: 4px 6px; }
 
   /* If a person's device is set to "reduce motion", turn animations off */
   @media (prefers-reduced-motion: reduce) {
@@ -168,35 +318,35 @@
 <main id="authScreen" class="auth-screen" hidden>
   <!-- Seven dots: five filled, two empty -->
   <svg class="week" viewBox="0 0 112 16" aria-hidden="true">
-    <circle class="dot-on"  cx="8"   cy="8" r="6"/>
-    <circle class="dot-on"  cx="24"  cy="8" r="6"/>
-    <circle class="dot-on"  cx="40"  cy="8" r="6"/>
-    <circle class="dot-on"  cx="56"  cy="8" r="6"/>
-    <circle class="dot-on"  cx="72"  cy="8" r="6"/>
+    <circle class="dot-on c0" cx="8"   cy="8" r="6"/>
+    <circle class="dot-on c1" cx="24"  cy="8" r="6"/>
+    <circle class="dot-on c2" cx="40"  cy="8" r="6"/>
+    <circle class="dot-on c3" cx="56"  cy="8" r="6"/>
+    <circle class="dot-on c4" cx="72"  cy="8" r="6"/>
     <circle class="dot-off" cx="88"  cy="8" r="5"/>
     <circle class="dot-off" cx="104" cy="8" r="5"/>
   </svg>
   <h1 id="authTitle">Welcome back</h1>
-  <p class="muted" id="authSub">Log in to see today's habits.</p>
+  <p class="sub" id="authSub">Log in to see today's habits.</p>
 
-  <div class="auth-card">
-    <!-- novalidate: we show our own plain-language messages instead of the browser's -->
-    <form id="authForm" novalidate>
-      <label>Email
+  <!-- novalidate: we show our own plain-language messages instead of the browser's -->
+  <form id="authForm" class="auth-form" novalidate>
+    <div class="group">
+      <div class="field">
+        <label class="field-name" for="email">Email</label>
         <input id="email" type="email" autocomplete="email" inputmode="email"
                autocapitalize="none" spellcheck="false" placeholder="you@example.com">
-      </label>
-      <label>Password
-        <div class="pw">
-          <input id="password" type="password" autocomplete="current-password">
-          <button type="button" class="pw-toggle" id="pwToggle" aria-pressed="false" aria-label="Show password">Show</button>
-        </div>
-        <span class="hint" id="pwHint" hidden>Use at least 8 characters.</span>
-      </label>
-      <div class="error" id="authError" role="alert"></div>
-      <button class="primary" type="submit" id="authSubmit">Log in</button>
-    </form>
-  </div>
+      </div>
+      <div class="field">
+        <label class="field-name" for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Required">
+        <button type="button" class="pw-toggle" id="pwToggle" aria-pressed="false" aria-label="Show password">Show</button>
+      </div>
+    </div>
+    <p class="footnote" id="pwHint" hidden>Use at least 8 characters.</p>
+    <div class="error" id="authError" role="alert"></div>
+    <button class="primary" type="submit" id="authSubmit">Log in</button>
+  </form>
 
   <p class="switch">
     <span id="switchText">New here?</span>
@@ -207,8 +357,8 @@
 <!-- SCREEN 3: CHECK YOUR EMAIL (only appears if email confirmation is turned on) -->
 <main id="checkScreen" class="auth-screen" hidden>
   <h1>Check your email</h1>
-  <p class="muted">We sent a link to <strong id="checkEmail"></strong>. Tap it to finish creating your account.</p>
-  <div class="auth-card">
+  <p class="sub">We sent a link to <strong id="checkEmail"></strong>. Tap it to finish creating your account.</p>
+  <div class="btn-row">
     <div class="status" id="resendStatus" role="status"></div>
     <button class="secondary" type="button" id="resendBtn">Send the email again</button>
   </div>
@@ -219,33 +369,37 @@
 <div id="appScreen" hidden>
   <main class="app-main">
 
+    <!-- TODAY TAB -->
     <section class="panel" id="tab-today">
-      <h1>Today</h1>
+      <h1 id="todayTitle">Today</h1>
       <div class="date" id="todayDate"></div>
-      <div class="card">
-        <h2>You're signed in</h2>
-        <p class="muted">Your account works. In the next step you'll add habits here and check them off with one tap.</p>
+      <div class="seg" id="seg" role="group" aria-label="Choose a day" hidden>
+        <button type="button" id="segYesterday" aria-pressed="false">Yesterday</button>
+        <button type="button" id="segToday" aria-pressed="true">Today</button>
       </div>
+      <!-- JavaScript fills this in (see renderToday) -->
+      <div id="todayView"></div>
     </section>
 
+    <!-- HISTORY TAB -->
     <section class="panel" id="tab-history" hidden>
       <h1>History</h1>
-      <div class="card">
-        <h2>Nothing to show yet</h2>
-        <p class="muted">Once you start checking off habits, your weeks and streaks appear here.</p>
+      <div class="group pad">
+        <h2>Coming soon</h2>
+        <p class="muted" style="margin:0">Your weeks, streaks and monthly view will appear here.</p>
       </div>
     </section>
 
+    <!-- HABITS TAB -->
     <section class="panel" id="tab-habits" hidden>
       <h1>Habits</h1>
-      <div class="card">
-        <h2>Your habits</h2>
-        <p class="muted">You'll add and edit habits here in the next step.</p>
-      </div>
-      <div class="card">
-        <h2>Account</h2>
-        <p class="muted">Signed in as <span id="accountEmail"></span></p>
-        <button class="secondary" type="button" id="logoutBtn">Log out</button>
+      <div id="habitsView"></div>
+      <div class="group" style="margin-top:28px">
+        <div class="field">
+          <span class="field-name auto">Signed in as</span>
+          <span class="value" id="accountEmail"></span>
+        </div>
+        <button class="row-action red" type="button" id="logoutBtn">Log out</button>
       </div>
     </section>
   </main>
@@ -254,20 +408,54 @@
   <nav class="tabbar" aria-label="Main">
     <div class="tabs">
       <button class="tab" type="button" data-tab="today" aria-current="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></svg>
         Today
       </button>
       <button class="tab" type="button" data-tab="history">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
         History
       </button>
       <button class="tab" type="button" data-tab="habits">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r="0.6"/><circle cx="4.8" cy="12" r="0.6"/><circle cx="4.8" cy="17" r="0.6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r="0.6"/><circle cx="4.8" cy="12" r="0.6"/><circle cx="4.8" cy="17" r="0.6"/></svg>
         Habits
       </button>
     </div>
   </nav>
 </div>
+
+<!-- THE ADD / EDIT POP-UP. A <dialog> is a built-in browser pop-up: it dims
+     the page, traps the keyboard focus inside, and closes with the Escape key. -->
+<dialog id="habitSheet" class="sheet" aria-labelledby="sheetTitle">
+  <form id="habitForm" novalidate>
+    <header class="sheet-bar">
+      <button type="button" class="bar-btn" id="sheetCancel">Cancel</button>
+      <h2 id="sheetTitle">New habit</h2>
+      <button type="submit" class="bar-btn strong" id="sheetSave">Add</button>
+    </header>
+    <div class="sheet-body">
+      <div class="group">
+        <div class="field">
+          <label class="field-name" for="habitName">Name</label>
+          <input id="habitName" type="text" maxlength="60" autocomplete="off"
+                 enterkeyhint="done" placeholder="Walk for 20 minutes">
+        </div>
+      </div>
+      <div class="group pad">
+        <div class="field-label" id="daysLabel">Repeat on</div>
+        <div class="days" id="days" role="group" aria-labelledby="daysLabel"></div>
+        <div class="presets">
+          <button type="button" class="linkbtn" id="presetEvery">Every day</button>
+          <button type="button" class="linkbtn" id="presetWeekdays">Weekdays</button>
+        </div>
+      </div>
+      <div class="error" id="sheetError" role="alert"></div>
+      <button type="button" class="danger" id="sheetArchive" hidden>Archive habit</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The small message that appears at the bottom, sometimes with "Undo" -->
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
   // ======================================================================
@@ -284,6 +472,23 @@
   // Shortcut: find an element on the page by its id
   const $ = id => document.getElementById(id);
 
+  // Shortcut for building page elements in code:
+  //   el("button", { class: "primary", text: "Save", onclick: doSave })
+  // We always set text with "textContent" (never as HTML), so anything a
+  // person types, like a habit name, can never run as code. Good habit!
+  function el(tag, attrs = {}, ...kids) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "class") node.className = value;
+      else if (key === "text") node.textContent = value;
+      else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+      else if (value === true) node.setAttribute(key, "");
+      else if (value !== false && value != null) node.setAttribute(key, value);
+    }
+    node.append(...kids);
+    return node;
+  }
+
   // If the Supabase library didn't load (for example, no internet),
   // say so clearly instead of showing a blank page.
   if (!window.supabase) {
@@ -296,15 +501,71 @@
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   // ======================================================================
-  // 2. APP STATE: a few variables that describe "where we are"
+  // 2. APP STATE: variables that describe "where we are"
   // ======================================================================
-  let mode = "login";       // "login" or "signup"
+  let mode = "login";       // login form mode: "login" or "signup"
   let screen = "splash";    // which screen is showing right now
   let user = null;          // the logged-in person (null = nobody)
   let pendingEmail = "";    // the email waiting to be confirmed
 
+  // Your habit data. Rule of thumb: change the data, then redraw the screen.
+  const state = {
+    habits: [],             // your active habits
+    done: new Set(),        // check-offs, stored like "habitId|2026-10-08"
+    loading: false,         // true while we fetch from the database
+    loadError: false,       // true if fetching failed
+    viewMode: "today"       // which day the Today tab shows: "today" or "yesterday"
+  };
+  let sheetEditing = null;      // the habit being edited in the pop-up (null = adding a new one)
+  let sheetDays = new Set();    // the weekdays picked in the pop-up (0 = Sunday ... 6 = Saturday)
+  let pendingOps = 0;           // how many saves are still in flight
+  const queues = new Map();     // keeps saves for the same habit-and-day in order
+  let toastTimer = null;
+
+  const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const DAY_LONG  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const SUGGESTIONS = ["Walk", "Read", "Drink water", "Stretch", "Journal"];
+
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const CHEVRON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+
   // ======================================================================
-  // 3. SWITCHING SCREENS AND TABS
+  // 3. DATES
+  // IMPORTANT: we build dates from the phone's LOCAL clock. Using the
+  // built-in toISOString() would use UTC time, which flips to "tomorrow"
+  // in the evening for people in the US. This helper avoids that bug.
+  // ======================================================================
+  const pad = n => String(n).padStart(2, "0");
+  const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); // "2026-10-08"
+
+  // The day the Today tab is showing (we use noon to dodge daylight-saving edge cases)
+  function viewDate() {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    if (state.viewMode === "yesterday") d.setDate(d.getDate() - 1);
+    return d;
+  }
+
+  // Every habit gets one of six earth-tone colors. The color comes from the
+  // habit's id, so a habit keeps the same color forever, on every device.
+  function colorVar(habit) {
+    let hash = 0;
+    for (const ch of String(habit.id)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return "var(--c" + (hash % 6) + ")";
+  }
+
+  // "Every day", "Weekdays", "Mon, Wed, Fri" ...
+  function scheduleText(days) {
+    const sorted = [...days].sort((a, b) => a - b);
+    const key = sorted.join(",");
+    if (key === "0,1,2,3,4,5,6") return "Every day";
+    if (key === "1,2,3,4,5") return "Weekdays";
+    if (key === "0,6") return "Weekends";
+    return sorted.map(i => DAY_SHORT[i]).join(", ");
+  }
+
+  // ======================================================================
+  // 4. SWITCHING SCREENS AND TABS
   // ======================================================================
   const SCREENS = { splash: "splash", auth: "authScreen", check: "checkScreen", app: "appScreen" };
 
@@ -314,12 +575,7 @@
     for (const [key, id] of Object.entries(SCREENS)) {
       $(id).hidden = key !== name;
     }
-    if (name === "app") {
-      $("accountEmail").textContent = user ? user.email : "";
-      $("todayDate").textContent = new Date().toLocaleDateString(undefined, {
-        weekday: "long", month: "long", day: "numeric"
-      });
-    }
+    if (name === "app") $("accountEmail").textContent = user ? user.email : "";
   }
 
   // Show one tab (Today / History / Habits) and mark its button as current.
@@ -350,7 +606,7 @@
   }
 
   // ======================================================================
-  // 4. SMALL HELPERS
+  // 5. SMALL HELPERS
   // ======================================================================
   function setError(message) { $("authError").textContent = message; }
 
@@ -383,11 +639,24 @@
     return "Something went wrong. Try again in a moment.";
   }
 
+  // The small message at the bottom. Pass { label, onClick } to add a button like "Undo".
+  function showToast(message, action) {
+    const t = $("toast");
+    t.replaceChildren(el("span", { text: message }));
+    if (action) {
+      t.append(el("button", { type: "button", text: action.label, onclick: () => { hideToast(); action.onClick(); } }));
+    }
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, action ? 7000 : 4000);
+  }
+  function hideToast() { $("toast").hidden = true; }
+
   // The address people return to after tapping an email link
   const pageUrl = window.location.origin + window.location.pathname;
 
   // ======================================================================
-  // 5. LOGGING IN AND CREATING AN ACCOUNT
+  // 6. LOGGING IN AND CREATING AN ACCOUNT (same as step 2)
   // ======================================================================
   async function handleAuth(event) {
     event.preventDefault(); // stop the page from reloading
@@ -408,7 +677,7 @@
       if (mode === "login") {
         const { error } = await db.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // Success: the "auth state listener" (section 6) shows the app.
+        // Success: the "auth state listener" (section 11) shows the app.
       } else {
         const { data, error } = await db.auth.signUp({
           email, password, options: { emailRedirectTo: pageUrl }
@@ -458,7 +727,324 @@
   }
 
   // ======================================================================
-  // 6. REACTING WHEN SOMEONE LOGS IN OR OUT
+  // 7. LOADING YOUR DATA FROM THE DATABASE
+  // We fetch your active habits, plus your check-offs from yesterday
+  // onward (that's all the Today tab needs).
+  // "silent" = refresh in the background without the "Loading…" message.
+  // ======================================================================
+  async function loadData(silent = false) {
+    if (!silent) {
+      state.loading = true;
+      state.loadError = false;
+      renderAll();
+    }
+    try {
+      const yesterday = new Date();
+      yesterday.setHours(12, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // Ask for both lists at the same time (faster than one after another).
+      // Row Level Security makes the database return ONLY your rows.
+      const [habitsRes, checksRes] = await Promise.all([
+        db.from("habits").select("id,name,days,created_at").eq("archived", false).order("created_at", { ascending: true }),
+        db.from("check_ins").select("habit_id,day,status").gte("day", ymd(yesterday))
+      ]);
+      if (habitsRes.error) throw habitsRes.error;
+      if (checksRes.error) throw checksRes.error;
+      if (!user) return; // logged out while loading: throw the result away
+
+      state.habits = habitsRes.data || [];
+      state.done = new Set(
+        (checksRes.data || []).filter(r => r.status === "done").map(r => r.habit_id + "|" + r.day)
+      );
+      state.loadError = false;
+    } catch (err) {
+      if (!silent) state.loadError = true;
+    } finally {
+      state.loading = false;
+      renderAll();
+    }
+  }
+
+  // Clear everything when someone logs out, so the next person starts fresh.
+  function resetData() {
+    state.habits = [];
+    state.done = new Set();
+    state.loading = false;
+    state.loadError = false;
+    state.viewMode = "today";
+    queues.clear();
+    if ($("habitSheet").open) $("habitSheet").close();
+    hideToast();
+  }
+
+  // ======================================================================
+  // 8. DRAWING THE TODAY AND HABITS TABS
+  // ======================================================================
+  function renderAll() {
+    renderToday();
+    renderHabitsTab();
+  }
+
+  // A small card shown when loading fails, with a button to retry.
+  function errorCard() {
+    return el("div", { class: "group empty-card" },
+      el("h2", { text: "Couldn't load your habits" }),
+      el("p", { class: "muted", text: "Check your connection and try again." }),
+      el("button", { type: "button", class: "primary", text: "Try again", onclick: () => loadData() })
+    );
+  }
+
+  function renderToday(justKey) {
+    if (state.habits.length === 0) state.viewMode = "today";
+    const date = viewDate();
+    const day = ymd(date);
+    const yesterday = state.viewMode === "yesterday";
+
+    $("todayTitle").textContent = yesterday ? "Yesterday" : "Today";
+    $("todayDate").textContent = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    $("segToday").setAttribute("aria-pressed", String(!yesterday));
+    $("segYesterday").setAttribute("aria-pressed", String(yesterday));
+    $("seg").hidden = state.loading || state.loadError || state.habits.length === 0;
+
+    const box = $("todayView");
+    box.replaceChildren();
+
+    if (state.loading) { box.append(el("p", { class: "muted", text: "Loading your habits…" })); return; }
+    if (state.loadError) { box.append(errorCard()); return; }
+
+    // First time: no habits yet. Offer a gentle start.
+    if (state.habits.length === 0) {
+      box.append(el("div", { class: "group empty-card" },
+        el("h2", { text: "Start with one habit" }),
+        el("p", { class: "muted", text: "Pick something small you can do on most days." }),
+        el("div", { class: "suggest" }, ...SUGGESTIONS.map(name =>
+          el("button", { type: "button", class: "chip-btn", text: name, onclick: () => openSheet({ name }) })
+        )),
+        el("button", { type: "button", class: "primary", text: "Add your own", onclick: () => openSheet() })
+      ));
+      return;
+    }
+
+    // Only habits scheduled for this weekday (getDay: 0 = Sunday ... 6 = Saturday)
+    const scheduled = state.habits.filter(h => (h.days || []).includes(date.getDay()));
+
+    if (scheduled.length === 0) {
+      box.append(el("div", { class: "group empty-card" },
+        el("h2", { text: yesterday ? "Nothing was scheduled" : "Nothing scheduled today" }),
+        el("p", { class: "muted", text: "Enjoy the break." }),
+        el("button", { type: "button", class: "secondary", text: "Add habit", onclick: () => openSheet() })
+      ));
+      return;
+    }
+
+    const doneCount = scheduled.filter(h => state.done.has(h.id + "|" + day)).length;
+    const allDone = doneCount === scheduled.length;
+
+    box.append(
+      el("div", { class: "summary" },
+        el("strong", { text: allDone ? "All done. Nice work." : doneCount + " of " + scheduled.length + " done" }),
+        el("span", { text: allDone ? "" : (scheduled.length - doneCount) + " to go" })
+      ),
+      // One segment per habit: it fills with that habit's color when checked off.
+      el("div", { class: "segs", "aria-hidden": "true" }, ...scheduled.map(h =>
+        el("span", { class: state.done.has(h.id + "|" + day) ? "on" : "", style: "--hc:" + colorVar(h) })
+      ))
+    );
+
+    // The list. Each row is a checkbox you tap once to check, again to undo.
+    const list = el("div", { class: "group", role: "group", "aria-label": "Habits for " + (yesterday ? "yesterday" : "today") });
+    for (const habit of scheduled) {
+      const key = habit.id + "|" + day;
+      const checked = state.done.has(key);
+      const circle = el("span", { class: "circle" });
+      circle.innerHTML = CHECK_SVG; // fixed drawing, not user text, so this is safe
+      list.append(el("button", {
+        type: "button", class: "habit-row", role: "checkbox",
+        "aria-checked": String(checked), "data-key": key, style: "--hc:" + colorVar(habit),
+        onclick: () => toggleDone(habit, day)
+      }, circle, el("span", { class: "label", text: habit.name })));
+    }
+    box.append(list);
+    box.append(el("button", { type: "button", class: "secondary after-list", text: "Add habit", onclick: () => openSheet() }));
+
+    // After a tap: play the little pop animation and keep keyboard focus on that row.
+    if (justKey) {
+      for (const row of list.querySelectorAll(".habit-row")) {
+        if (row.dataset.key === justKey) {
+          if (row.getAttribute("aria-checked") === "true") row.classList.add("just");
+          row.focus({ preventScroll: true });
+        }
+      }
+    }
+  }
+
+  function renderHabitsTab() {
+    const box = $("habitsView");
+    box.replaceChildren();
+
+    if (state.loading) { box.append(el("p", { class: "muted", text: "Loading your habits…" })); return; }
+    if (state.loadError) { box.append(errorCard()); return; }
+
+    if (state.habits.length === 0) {
+      box.append(el("div", { class: "group empty-card" },
+        el("h2", { text: "No habits yet" }),
+        el("p", { class: "muted", text: "Add one and it will show up on your Today tab on the days you choose." }),
+        el("button", { type: "button", class: "primary", text: "Add habit", onclick: () => openSheet() })
+      ));
+      return;
+    }
+
+    const list = el("div", { class: "group" });
+    for (const habit of state.habits) {
+      const chevron = el("span", { class: "chev" });
+      chevron.innerHTML = CHEVRON_SVG;
+      list.append(el("button", {
+        type: "button", class: "habit-row edit", "aria-label": "Edit " + habit.name,
+        style: "--hc:" + colorVar(habit),
+        onclick: () => openSheet({ habit })
+      },
+        el("span", { class: "lead" },
+          el("span", { class: "dot-hc", "aria-hidden": "true" }),
+          el("span", { class: "stack" },
+            el("span", { class: "label", text: habit.name }),
+            el("span", { class: "sched", text: scheduleText(habit.days || []) })
+          )
+        ),
+        chevron
+      ));
+    }
+    box.append(el("button", { type: "button", class: "primary", text: "Add habit", onclick: () => openSheet() }));
+    box.append(el("div", { class: "after-list" }, list));
+  }
+
+  // ======================================================================
+  // 9. CHECKING A HABIT OFF
+  // We update the screen FIRST (so it feels instant), then save in the
+  // background. If saving fails, we say so and reload the true state.
+  // ======================================================================
+  function toggleDone(habit, day) {
+    const key = habit.id + "|" + day;
+    const nowDone = !state.done.has(key);
+    if (nowDone) state.done.add(key); else state.done.delete(key);
+    renderToday(key);
+
+    // Saves for the same habit and day run one after another, so tapping
+    // fast (check, uncheck, check) always ends in the right state.
+    pendingOps++;
+    const previous = queues.get(key) || Promise.resolve();
+    const op = previous.then(async () => {
+      const result = nowDone
+        ? await db.from("check_ins").upsert({ habit_id: habit.id, day, status: "done" }, { onConflict: "habit_id,day" })
+        : await db.from("check_ins").delete().eq("habit_id", habit.id).eq("day", day);
+      if (result.error) throw result.error;
+    });
+    queues.set(key, op.catch(() => {}));
+    op.catch(() => {
+      showToast("Couldn't save that. Check your connection and try again.");
+      loadData(true); // reload the real saved state
+    }).finally(() => { pendingOps--; });
+  }
+
+  // ======================================================================
+  // 10. THE ADD / EDIT POP-UP
+  // ======================================================================
+  // Open the pop-up. Pass { habit } to edit one, or { name } to start a new
+  // one with a suggested name already filled in.
+  function openSheet(opts = {}) {
+    const habit = opts.habit || null;
+    sheetEditing = habit;
+    $("sheetTitle").textContent = habit ? "Edit habit" : "New habit";
+    $("sheetSave").textContent = habit ? "Save" : "Add";
+    $("sheetArchive").hidden = !habit;
+    $("habitName").value = habit ? habit.name : (opts.name || "");
+    sheetDays = new Set(habit ? habit.days : [0, 1, 2, 3, 4, 5, 6]);
+    renderDayChips();
+    $("sheetError").textContent = "";
+    $("sheetSave").disabled = false;
+    $("sheetArchive").disabled = false;
+    $("habitSheet").showModal();
+    if (!habit) $("habitName").focus();          // new habit: ready to type
+    else if (document.activeElement) document.activeElement.blur(); // editing: don't pop up the keyboard
+  }
+
+  // The seven day buttons (Sun ... Sat). Tap to turn each on or off.
+  function renderDayChips() {
+    const box = $("days");
+    box.replaceChildren();
+    DAY_SHORT.forEach((label, i) => {
+      const chip = el("button", {
+        type: "button", class: "day", text: label,
+        "aria-label": DAY_LONG[i], "aria-pressed": String(sheetDays.has(i))
+      });
+      chip.addEventListener("click", () => {
+        if (sheetDays.has(i)) sheetDays.delete(i); else sheetDays.add(i);
+        chip.setAttribute("aria-pressed", String(sheetDays.has(i)));
+      });
+      box.append(chip);
+    });
+  }
+
+  async function saveHabit(event) {
+    event.preventDefault();
+    const editing = sheetEditing;
+    const name = $("habitName").value.trim();
+    const days = [...sheetDays].sort((a, b) => a - b);
+
+    if (!name) { $("sheetError").textContent = "Give your habit a name."; return; }
+    if (days.length === 0) { $("sheetError").textContent = "Pick at least one day."; return; }
+
+    $("sheetError").textContent = "";
+    $("sheetSave").disabled = true;
+    try {
+      if (editing) {
+        const { error } = await db.from("habits").update({ name, days }).eq("id", editing.id);
+        if (error) throw error;
+        editing.name = name;   // update our copy too
+        editing.days = days;
+      } else {
+        // The database fills in the id and your user id automatically.
+        const { data, error } = await db.from("habits")
+          .insert({ name, days }).select("id,name,days,created_at").single();
+        if (error) throw error;
+        state.habits.push(data);
+      }
+      $("habitSheet").close();
+      renderAll();
+    } catch (err) {
+      $("sheetError").textContent = friendlyError(err);
+    } finally {
+      $("sheetSave").disabled = false;
+    }
+  }
+
+  // Archiving hides a habit but keeps all its history. "Undo" brings it back.
+  async function archiveHabit() {
+    const habit = sheetEditing;
+    if (!habit) return;
+    $("sheetArchive").disabled = true;
+    try {
+      const { error } = await db.from("habits").update({ archived: true }).eq("id", habit.id);
+      if (error) throw error;
+      state.habits = state.habits.filter(h => h.id !== habit.id);
+      $("habitSheet").close();
+      renderAll();
+      showToast("Archived “" + habit.name + "”", {
+        label: "Undo",
+        onClick: async () => {
+          const { error: undoError } = await db.from("habits").update({ archived: false }).eq("id", habit.id);
+          if (undoError) showToast("Couldn't undo that. Try again from the Habits tab.");
+          else loadData(true);
+        }
+      });
+    } catch (err) {
+      $("sheetError").textContent = friendlyError(err);
+      $("sheetArchive").disabled = false;
+    }
+  }
+
+  // ======================================================================
+  // 11. REACTING WHEN SOMEONE LOGS IN OR OUT
   // Supabase calls this function whenever the login state changes: when the
   // page opens, after logging in, after logging out, or after tapping an
   // email link. This one place decides which screen to show.
@@ -474,11 +1060,14 @@
         // Clear the form so the password doesn't linger on the page.
         $("authForm").reset();
         setMode("login");
+        // Load data on the next tick (it's unsafe to call the database from inside this function).
+        setTimeout(() => loadData(), 0);
       }
-    } else if (screen !== "check") {
+    } else {
+      if (screen === "app") resetData();
       // Not logged in: show the login screen (but don't interrupt the
       // "check your email" message).
-      showScreen("auth");
+      if (screen !== "check") showScreen("auth");
     }
   });
 
@@ -487,13 +1076,19 @@
     if (screen !== "splash") return; // the listener already handled it
     user = data.session ? data.session.user : null;
     showScreen(user ? "app" : "auth");
-    if (user) showTab("today");
+    if (user) { showTab("today"); loadData(); }
   }).catch(() => {
     if (screen === "splash") showScreen("auth");
   });
 
+  // When you come back to the app (switching apps, waking the phone),
+  // quietly refresh, so changes from your other devices appear.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && user && screen === "app" && !state.loading && pendingOps === 0) loadData(true);
+  });
+
   // ======================================================================
-  // 7. CONNECTING BUTTONS TO FUNCTIONS
+  // 12. CONNECTING BUTTONS TO FUNCTIONS
   // "When X is tapped, run Y."
   // ======================================================================
   $("authForm").addEventListener("submit", handleAuth);
@@ -516,6 +1111,20 @@
   for (const btn of document.querySelectorAll(".tab")) {
     btn.addEventListener("click", () => showTab(btn.dataset.tab));
   }
+
+  // Yesterday / Today switch
+  $("segYesterday").addEventListener("click", () => { state.viewMode = "yesterday"; renderToday(); });
+  $("segToday").addEventListener("click", () => { state.viewMode = "today"; renderToday(); });
+
+  // The pop-up
+  $("habitForm").addEventListener("submit", saveHabit);
+  $("sheetCancel").addEventListener("click", () => $("habitSheet").close());
+  $("sheetArchive").addEventListener("click", archiveHabit);
+  $("presetEvery").addEventListener("click", () => { sheetDays = new Set([0, 1, 2, 3, 4, 5, 6]); renderDayChips(); });
+  $("presetWeekdays").addEventListener("click", () => { sheetDays = new Set([1, 2, 3, 4, 5]); renderDayChips(); });
+  // Tapping the dimmed area outside the pop-up closes it.
+  $("habitSheet").addEventListener("click", e => { if (e.target === $("habitSheet")) $("habitSheet").close(); });
+  $("habitSheet").addEventListener("close", () => { sheetEditing = null; });
 </script>
 </body>
 </html>
