@@ -8,9 +8,10 @@
 // When you change index.html in the future, bump the number in CACHE below.
 // That tells phones to throw away the old copy.
 
-const CACHE = "habits-v4";
-const CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
-const APP_FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "habits-v5";
+// The login/database library, a fixed version kept next to index.html.
+const LIBRARY = "./supabase-js-2.117.2.js";
+const APP_FILES = ["./", "./index.html", LIBRARY, "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 // 1. INSTALL: save the app's files.
 self.addEventListener("install", event => {
@@ -20,9 +21,6 @@ self.addEventListener("install", event => {
     // the others still get saved and the helper still starts. (addAll would
     // give up entirely and the helper would never switch on.)
     await Promise.allSettled(APP_FILES.map(f => cache.add(f)));
-    // The login/database library comes from another website; save it too
-    // (best effort: don't fail the install if it can't be fetched right now).
-    try { await cache.put(CDN, await fetch(new Request(CDN, { mode: "no-cors" }))); } catch (e) { /* ok */ }
     await self.skipWaiting();
   })());
 });
@@ -58,13 +56,13 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // The library from the CDN, and our own icons/manifest: saved copy first,
+  // The library and our own icons/manifest: saved copy first,
   // refreshed quietly in the background.
-  if (req.url === CDN || (url.origin === self.location.origin && APP_FILES.some(f => url.pathname.endsWith(f.slice(1))))) {
+  if (url.origin === self.location.origin && APP_FILES.some(f => url.pathname.endsWith(f.slice(1)))) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const saved = await cache.match(req);
-      const refresh = fetch(req).then(res => { if (res && (res.ok || res.type === "opaque")) cache.put(req, res.clone()); return res; }).catch(() => null);
+      const refresh = fetch(req).then(res => { if (res && res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
       return saved || (await refresh) || Response.error();
     })());
   }

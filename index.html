@@ -10,7 +10,7 @@
 <!-- SECURITY: tells the browser exactly which places this page may load code from or talk to.
      Even if an attacker managed to sneak in a script tag, the browser would refuse to run
      code from anywhere else or send your data to any other website. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <script>
   // SECURITY: refuse to run inside someone else's page (stops "clickjacking").
@@ -22,6 +22,7 @@
 <!-- INSTALL AS AN APP: these lines let you add the app to your Home Screen.
      The manifest names the app and its icon; the apple lines do the same for iPhone. -->
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -53,9 +54,6 @@
   All colors live in one place, the ":root" block below. Change a value
   there and the whole app updates.
 -->
-
-<!-- Supabase's code library. It gives us ready-made login and database functions. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   /* ---------- COLORS ----------
@@ -665,6 +663,14 @@
 <!-- The small message that appears at the bottom, sometimes with "Undo" -->
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+<!-- Supabase's code library. It gives us ready-made login and database functions.
+     SECURITY: a fixed copy (version 2.117.2) is kept in this repo instead of loading
+     "whatever is newest" from a CDN. A hacked or broken CDN release can't reach your
+     logged-in users, and the app needs one less outside connection to start.
+     To upgrade: download the new dist/umd/supabase.js, save it under a new name,
+     change this line and the LIBRARY line in sw.js. -->
+<script src="supabase-js-2.117.2.js"></script>
+
 <script>
   // ======================================================================
   // 1. CONNECTING TO SUPABASE
@@ -1113,6 +1119,15 @@
     try {
       const since = ymd(addDays(todayNoon(), -WINDOW_DAYS));
 
+      // Ask for the check-ins at the same time as the habits (they don't depend
+      // on each other), so the app opens after one round trip instead of two.
+      // Row Level Security makes the database return ONLY your rows.
+      const checksPromise = fetchAllPages(() =>
+        db.from("check_ins").select("habit_id,day,status,note").gte("day", since)
+          .order("day", { ascending: true }).order("habit_id", { ascending: true })
+      );
+      checksPromise.catch(() => {}); // handled below; avoids an "unhandled" warning if habits fail first
+
       // Ask for the habits. Newer features need newer database columns. If you
       // haven't run the matching SQL yet, we drop the missing column and ask
       // again, so the app still works (that feature just stays hidden).
@@ -1131,11 +1146,7 @@
       }
       if (habitsRes.error) throw habitsRes.error;
 
-      // Row Level Security makes the database return ONLY your rows.
-      const checks = await fetchAllPages(() =>
-        db.from("check_ins").select("habit_id,day,status,note").gte("day", since)
-          .order("day", { ascending: true }).order("habit_id", { ascending: true })
-      );
+      const checks = await checksPromise;
       if (!user) return; // logged out while loading: throw the result away
 
       state.hasColor = have.includes("color");
