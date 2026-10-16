@@ -1119,6 +1119,15 @@
     try {
       const since = ymd(addDays(todayNoon(), -WINDOW_DAYS));
 
+      // Ask for the check-ins at the same time as the habits (they don't depend
+      // on each other), so the app opens after one round trip instead of two.
+      // Row Level Security makes the database return ONLY your rows.
+      const checksPromise = fetchAllPages(() =>
+        db.from("check_ins").select("habit_id,day,status,note").gte("day", since)
+          .order("day", { ascending: true }).order("habit_id", { ascending: true })
+      );
+      checksPromise.catch(() => {}); // handled below; avoids an "unhandled" warning if habits fail first
+
       // Ask for the habits. Newer features need newer database columns. If you
       // haven't run the matching SQL yet, we drop the missing column and ask
       // again, so the app still works (that feature just stays hidden).
@@ -1137,11 +1146,7 @@
       }
       if (habitsRes.error) throw habitsRes.error;
 
-      // Row Level Security makes the database return ONLY your rows.
-      const checks = await fetchAllPages(() =>
-        db.from("check_ins").select("habit_id,day,status,note").gte("day", since)
-          .order("day", { ascending: true }).order("habit_id", { ascending: true })
-      );
+      const checks = await checksPromise;
       if (!user) return; // logged out while loading: throw the result away
 
       state.hasColor = have.includes("color");
