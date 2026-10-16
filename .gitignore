@@ -1,0 +1,16 @@
+# Secrets: never commit these. Keys belong in Supabase function secrets
+# or the service's own dashboard, never in this repo or the site.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+service-account*.json
+
+# Local clutter
+.DS_Store
+Thumbs.db
+node_modules/
+.claude/settings.local.json
