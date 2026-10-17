@@ -22,3 +22,5 @@ language sql security definer set search_path = '' as $$
   select exists (select 1 from claimed);
 $$;
 revoke execute on function public.claim_push_test(uuid) from public, anon, authenticated;
+-- The reminders function (service role) needs to call the helper; nobody else can.
+grant execute on function public.claim_push_test(uuid) to service_role;
