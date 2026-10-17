@@ -1,0 +1,3 @@
+# Keep the server code and database changes out of the published site (they stay in the repo).
+exclude:
+  - supabase
