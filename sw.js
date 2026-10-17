@@ -8,7 +8,7 @@
 // When you change index.html in the future, bump the number in CACHE below.
 // That tells phones to throw away the old copy.
 
-const CACHE = "habits-v5";
+const CACHE = "habits-v6";
 // The login/database library, a fixed version kept next to index.html.
 const LIBRARY = "./supabase-js-2.117.2.js";
 const APP_FILES = ["./", "./index.html", LIBRARY, "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];

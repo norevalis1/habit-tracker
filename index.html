@@ -2100,11 +2100,12 @@
         const status = res && res.status;
         let said = "";
         try { const j = await res.clone().json(); said = j.error || j.message || j.msg || ""; } catch (e) { try { said = (await res.text()).slice(0, 80); } catch (e2) { /* nothing */ } }
-        const hint = status === 404 ? "The reminder service isn't set up yet. Deploy the \u201Csend-reminders\u201D function."
+        const hint = status === 429 ? "You just sent a test. Wait a minute and try again."
+          : status === 404 ? "The reminder service isn't set up yet. Deploy the \u201Csend-reminders\u201D function."
           : status === 401 ? "The server rejected the login check. Turn OFF \u201CVerify JWT\u201D on the send-reminders function."
           : status === 500 ? "The function ran but hit a problem. Check its secrets and logs."
           : "The test didn't go through.";
-        $("pushError").textContent = hint + " (" + [status, said || error.message].filter(Boolean).join(": ").slice(0, 120) + ")";
+        $("pushError").textContent = status === 429 ? hint : hint + " (" + [status, said || error.message].filter(Boolean).join(": ").slice(0, 120) + ")";
         return;
       }
       if (!data || !data.sent) { $("pushError").textContent = "The server ran, but no device received it. Try turning notifications off and on again."; return; }
